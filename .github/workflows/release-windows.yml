@@ -1,4 +1,4 @@
-name: Release (Windows)
+name: Release (Windows + macOS)
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - 'v*.*.*'
   workflow_dispatch:
 
-# Only scope the GITHUB_TOKEN needs, to create the release and upload the installer.
+# Only scope the GITHUB_TOKEN needs, to create the release and upload the installers.
 # Declaring the block also drops every other scope to none.
 permissions:
   contents: write
@@ -14,24 +14,21 @@ permissions:
 # Cancelling mid-upload can leave a release created with a missing asset, which is
 # worse than letting a duplicate run queue.
 concurrency:
-  group: release-windows-${{ github.ref }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
-    timeout-minutes: 60
-
+  # Its own job so a version typo fails in seconds, once, rather than separately on
+  # each platform after its build has already started.
+  verify-version:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # First, so a version typo fails in seconds rather than after a 15-minute build.
-      # Node is preinstalled on the runner image, so this works before setup-node.
       - name: Verify version consistency
-        shell: bash
         run: |
           set -euo pipefail
           pkg=$(node -p "require('./package.json').version")
@@ -51,6 +48,40 @@ jobs:
               echo "::error::Tag ${GITHUB_REF_NAME} does not match version $pkg."
               exit 1
             fi
+          fi
+
+  build:
+    needs: verify-version
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+
+    strategy:
+      # One platform failing should not cancel the other; a partial result is still
+      # worth downloading, and the release job below refuses to publish either way.
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: QualSched-windows-x64
+            bundle: src-tauri/target/release/bundle/nsis/*-setup.exe
+          - os: macos-latest
+            artifact: QualSched-macos-arm64
+            bundle: src-tauri/target/release/bundle/dmg/*.dmg
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # macos-latest is Apple Silicon, so the default host target is aarch64 and no
+      # cross-compilation is needed. Fail loudly if GitHub ever repoints the label at
+      # an Intel image, rather than silently shipping an x86_64 build as "arm64".
+      - name: Confirm Apple Silicon runner
+        if: runner.os == 'macOS'
+        run: |
+          arch=$(uname -m)
+          echo "runner architecture: $arch"
+          if [ "$arch" != "arm64" ]; then
+            echo "::error::Expected an arm64 runner for the Apple Silicon build, got $arch."
+            exit 1
           fi
 
       - uses: actions/setup-node@v4
@@ -80,27 +111,43 @@ jobs:
         working-directory: src-tauri
         run: cargo test --release --locked
 
-      - name: Build Windows installer
+      - name: Build installer
         run: npm run tauri build
 
-      # Runs on every trigger, so a manual dispatch still yields a downloadable .exe.
+      # Runs on every trigger, so a manual dispatch still yields a downloadable build.
       - name: Upload installer as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: QualSched-windows-x64
-          path: src-tauri/target/release/bundle/nsis/*-setup.exe
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.bundle }}
           if-no-files-found: error
           retention-days: 14
 
+  # Publishing from a single job, after both builds succeed, keeps two runners from
+  # racing to create the same release — and means a tag never yields a release that
+  # is missing one platform's installer.
+  release:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download built installers
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List what will be attached
+        run: find artifacts -type f -print
+
       - name: Publish GitHub Release
-        if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: QualSched ${{ github.ref_name }}
           generate_release_notes: true
           fail_on_unmatched_files: true
-          files: src-tauri/target/release/bundle/nsis/*-setup.exe
+          files: artifacts/**/*
           body: |
             ## Windows
 
@@ -112,3 +159,21 @@ jobs:
 
             Installation needs an internet connection if Microsoft Edge WebView2
             is not already present (it ships with Windows 11).
+
+            ## macOS (Apple Silicon)
+
+            Download the `QualSched_*_aarch64.dmg` asset below, open it, and drag
+            QualSched to Applications. Apple Silicon only — it will not run on an
+            Intel Mac.
+
+            The app is ad-hoc signed rather than notarised, so the first launch
+            reports that QualSched "is damaged and can't be opened". It is not
+            damaged: macOS quarantines downloads that Apple has not notarised.
+            Clear the quarantine flag once, in Terminal:
+
+            ```
+            xattr -dr com.apple.quarantine /Applications/QualSched.app
+            ```
+
+            Then open it normally. Right-click → Open does not work for ad-hoc
+            signed apps, so the command above is the way through.
