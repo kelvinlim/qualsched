@@ -61,8 +61,9 @@ pub async fn save_project(
     app: AppHandle,
     state: State<'_, AppState>,
     account_id: Uuid,
-    project: Project,
+    mut project: Project,
 ) -> AppResult<AppConfig> {
+    project.reconcile_embedded_defaults();
     state
         .update_config(&app, |cfg| {
             let account = cfg

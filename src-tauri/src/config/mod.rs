@@ -75,6 +75,21 @@ pub struct Project {
     pub embedded_defaults: EmbeddedDefaults,
 }
 
+impl Project {
+    /// Copies the timezone and expiry onto the embedded defaults.
+    ///
+    /// Each of those two values exists twice: once as the fallback the scheduler uses
+    /// for a contact that has no value of its own, and once as the seed written onto
+    /// contacts by `apply_embedded_defaults` and by adding a participant. Nobody wants
+    /// them to differ, and when they did the profile screen's "Time zone" box silently
+    /// had no effect on new participants — the seed stayed at its hardcoded default.
+    /// The UI now shows one box per value; this keeps the pair in step for every writer.
+    pub fn reconcile_embedded_defaults(&mut self) {
+        self.embedded_defaults.time_zone = self.timezone.clone();
+        self.embedded_defaults.expire_minutes = self.minutes_expire as i64;
+    }
+}
+
 /// Was hardcoded in qualtrics_util.send_email; now per-project.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -154,4 +169,63 @@ fn default_timezone() -> String {
 }
 fn default_minutes_expire() -> u32 {
     DEFAULT_MINUTES_EXPIRE
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn project() -> Project {
+        Project {
+            id: Uuid::new_v4(),
+            name: "Study".into(),
+            survey_id: String::new(),
+            message_id: String::new(),
+            message_id_email: String::new(),
+            mailing_list_id: String::new(),
+            timezone: DEFAULT_TIMEZONE.into(),
+            minutes_expire: DEFAULT_MINUTES_EXPIRE,
+            email_header: EmailHeader::default(),
+            embedded_defaults: EmbeddedDefaults::default(),
+        }
+    }
+
+    // The profile screen shows one box per value; the seed must follow it. When it did
+    // not, changing the time zone left new participants stamped America/Chicago.
+    #[test]
+    fn reconcile_pulls_the_seed_up_to_the_visible_value() {
+        let mut p = project();
+        p.timezone = "Europe/London".into();
+        p.minutes_expire = 30;
+        p.embedded_defaults.time_zone = "America/Chicago".into();
+        p.embedded_defaults.expire_minutes = 60;
+
+        p.reconcile_embedded_defaults();
+
+        assert_eq!(p.embedded_defaults.time_zone, "Europe/London");
+        assert_eq!(p.embedded_defaults.expire_minutes, 30);
+    }
+
+    #[test]
+    fn reconciled_values_are_what_a_contact_is_seeded_with() {
+        let mut p = project();
+        p.timezone = "Asia/Tokyo".into();
+        p.minutes_expire = 15;
+        p.reconcile_embedded_defaults();
+
+        let pairs: std::collections::BTreeMap<_, _> = p.embedded_defaults.as_pairs().into_iter().collect();
+        assert_eq!(pairs["TimeZone"], "Asia/Tokyo");
+        assert_eq!(pairs["ExpireMinutes"], "15");
+    }
+
+    #[test]
+    fn reconcile_leaves_the_other_defaults_alone() {
+        let mut p = project();
+        p.embedded_defaults.num_days = 7;
+        p.embedded_defaults.time_slots = "[800,900],2000".into();
+        p.reconcile_embedded_defaults();
+
+        assert_eq!(p.embedded_defaults.num_days, 7);
+        assert_eq!(p.embedded_defaults.time_slots, "[800,900],2000");
+    }
 }

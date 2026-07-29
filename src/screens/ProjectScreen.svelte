@@ -249,13 +249,15 @@
           <h2>Scheduling defaults</h2>
           <p class="hint" style="margin-top: -0.4rem; margin-bottom: 0.85rem;">
             Applied to participants who do not already have these values set. Existing
-            per-participant values are never overwritten.
+            per-participant values are never overwritten. Time zone and link expiry are
+            also what the scheduler falls back to when a participant leaves them blank.
           </p>
 
           <div class="grid3">
             <div class="field">
               <label for="pd-tz">Time zone</label>
               <input id="pd-tz" type="text" bind:value={draft.timezone} placeholder="America/Chicago" />
+              <div class="hint">An IANA name, like America/Chicago or Europe/London.</div>
             </div>
             <div class="field">
               <label for="pd-expire">Link expires after (minutes)</label>
@@ -278,15 +280,7 @@
             <div class="field">
               <label for="pd-days">Number of days</label>
               <input id="pd-days" type="number" min="0" bind:value={draft.embeddedDefaults.numDays} />
-            </div>
-            <div class="field">
-              <label for="pd-exp2">Expire minutes</label>
-              <input
-                id="pd-exp2"
-                type="number"
-                min="1"
-                bind:value={draft.embeddedDefaults.expireMinutes}
-              />
+              <div class="hint">Must be above 0, or every participant is skipped.</div>
             </div>
           </div>
 
