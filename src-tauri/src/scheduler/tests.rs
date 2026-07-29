@@ -299,6 +299,58 @@ fn falls_back_to_project_timezone_and_expiry() {
     }
 }
 
+// The channel has to resolve for participants who are not eligible. Once a study is
+// running every contact has a non-zero SurveysScheduled, and the Contacts table still
+// needs to show whether each one is reached by SMS or email.
+#[test]
+fn delivery_method_resolves_for_ineligible_contacts() {
+    let already_scheduled = embedded(&[
+        ("SurveysScheduled", "68"),
+        ("NumDays", "0"),
+        ("ContactMethod", "email"),
+    ]);
+    assert!(matches!(
+        contact_eligibility(&already_scheduled, &defaults()),
+        Eligibility::Skipped(_)
+    ));
+    assert_eq!(delivery_method(&already_scheduled), Ok(Method::Email));
+}
+
+#[test]
+fn delivery_method_matches_eligibility_resolution() {
+    let cases = [
+        (vec![("ContactMethod", "email")], Method::Email),
+        (vec![("ContactMethod", "SMS")], Method::Sms),
+        (vec![("UseSMS", "1")], Method::Sms),
+        // ContactMethod wins over the legacy flag.
+        (vec![("ContactMethod", "email"), ("UseSMS", "1")], Method::Email),
+    ];
+    for (fields, want) in cases {
+        let mut e = embedded(&[
+            ("SurveysScheduled", "0"),
+            ("NumDays", "1"),
+            ("TimeSlots", "800"),
+            ("StartDate", "2026-07-15"),
+        ]);
+        for (k, v) in &fields {
+            e.insert(k.to_string(), v.to_string());
+        }
+        assert_eq!(delivery_method(&e), Ok(want), "for {fields:?}");
+        match contact_eligibility(&e, &defaults()) {
+            Eligibility::Eligible { method, .. } => assert_eq!(method, want, "for {fields:?}"),
+            other => panic!("expected eligible for {fields:?}, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn delivery_method_explains_when_undeterminable() {
+    assert!(delivery_method(&embedded(&[])).unwrap_err().contains("UseSMS"));
+    assert!(delivery_method(&embedded(&[("ContactMethod", "pigeon")]))
+        .unwrap_err()
+        .contains("not 'sms' or 'email'"));
+}
+
 #[test]
 fn skip_reasons_are_specific() {
     let base = [

@@ -4,9 +4,51 @@
   import { errorMessage, type ContactView } from "../lib/types";
   import ContactEditor from "../components/ContactEditor.svelte";
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
+  import {
+    asNumber,
+    asText,
+    compareCells,
+    nextSort,
+    type Cell,
+    type SortDir,
+  } from "../lib/sort";
 
-  /** Embedded-data keys shown as table columns, in the order they read best. */
-  const COLUMNS = ["StartDate", "NumDays", "TimeSlots", "TimeZone", "ContactMethod"];
+  interface Column {
+    key: string;
+    label: string;
+    /** Value used for both sorting and, unless the cell is special-cased, display. */
+    value: (c: ContactView) => Cell;
+    mono?: boolean;
+  }
+
+  /**
+   * Table columns in the order they read best. Header labels for embedded data keep the
+   * Qualtrics field names, so they match what the editor and Qualtrics itself show.
+   */
+  const COLUMNS: Column[] = [
+    { key: "name", label: "Name", value: (c) => sortableName(c) },
+    // Phone and email are shown side by side rather than picking one by ContactMethod:
+    // participants can be on either channel, and a blank cell is itself worth seeing.
+    { key: "phone", label: "Phone", mono: true, value: (c) => asText(c.phone) },
+    { key: "email", label: "Email", mono: true, value: (c) => asText(c.email) },
+    { key: "StartDate", label: "StartDate", mono: true, value: (c) => asText(c.embedded.StartDate) },
+    { key: "NumDays", label: "NumDays", mono: true, value: (c) => asNumber(c.embedded.NumDays) },
+    { key: "TimeSlots", label: "TimeSlots", mono: true, value: (c) => asText(c.embedded.TimeSlots) },
+    { key: "TimeZone", label: "TimeZone", mono: true, value: (c) => asText(c.embedded.TimeZone) },
+    {
+      key: "ContactMethod",
+      label: "ContactMethod",
+      mono: true,
+      value: (c) => asText(c.embedded.ContactMethod),
+    },
+    {
+      key: "SurveysScheduled",
+      label: "Scheduled",
+      mono: true,
+      value: (c) => asNumber(c.embedded.SurveysScheduled),
+    },
+    { key: "status", label: "Status", value: (c) => c.eligible },
+  ];
 
   let contacts = $state<ContactView[]>([]);
   let selected = $state<Set<string>>(new Set());
@@ -18,6 +60,7 @@
   let loading = $state(false);
   let pendingRemoval = $state<ContactView | null>(null);
   let confirmRemove = $state(false);
+  let sort = $state<{ key: string; dir: SortDir }>({ key: "name", dir: "asc" });
 
   $effect(() => {
     if (app.hasProject) void load();
@@ -143,12 +186,31 @@
     }
   }
 
+  /** Natural order, for prose: "Removed Kelvin Lim from the mailing list." */
   function displayName(c: ContactView): string {
     const name = `${c.firstName} ${c.lastName}`.trim();
     return name || c.email || c.phone || c.contactId;
   }
 
+  /** "Lim, Kelvin" — scannable down a column, and sorts by family name. */
+  function sortableName(c: ContactView): string {
+    const last = c.lastName.trim();
+    const first = c.firstName.trim();
+    if (last && first) return `${last}, ${first}`;
+    return last || first || c.email || c.phone || c.contactId;
+  }
+
   let eligibleCount = $derived(contacts.filter((c) => c.eligible).length);
+
+  let sorted = $derived.by(() => {
+    const column = COLUMNS.find((c) => c.key === sort.key);
+    if (!column) return contacts;
+    // Copy first: sort() mutates, and reordering the source array in place would
+    // fight the reactive updates that edit and remove make to it.
+    return [...contacts].sort((a, b) =>
+      compareCells(column.value(a), column.value(b), sort.dir),
+    );
+  });
 </script>
 
 <h1>Contacts</h1>
@@ -198,18 +260,27 @@
               aria-label="Select all participants"
             />
           </th>
-          <th>Name</th>
-          <th>Contact</th>
-          {#each COLUMNS as key (key)}
-            <th>{key}</th>
+          {#each COLUMNS as column (column.key)}
+            <th
+              aria-sort={sort.key === column.key
+                ? sort.dir === "asc"
+                  ? "ascending"
+                  : "descending"
+                : "none"}
+            >
+              <button class="sort" onclick={() => (sort = nextSort(sort, column.key))}>
+                {column.label}
+                <span class="arrow" class:on={sort.key === column.key}>
+                  {sort.key === column.key && sort.dir === "desc" ? "▼" : "▲"}
+                </span>
+              </button>
+            </th>
           {/each}
-          <th>Scheduled</th>
-          <th>Status</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
-        {#each contacts as contact (contact.contactId)}
+        {#each sorted as contact (contact.contactId)}
           <tr>
             <td>
               <input
@@ -219,20 +290,20 @@
                 aria-label={`Select ${displayName(contact)}`}
               />
             </td>
-            <td>{displayName(contact)}</td>
-            <td class="mono">{contact.method === "email" ? contact.email : contact.phone}</td>
-            {#each COLUMNS as key (key)}
-              <td class="mono">{contact.embedded[key] ?? "—"}</td>
-            {/each}
-            <td class="mono">{contact.embedded.SurveysScheduled ?? "—"}</td>
-            <td class="wrap">
-              {#if contact.eligible}
-                <span class="badge ok">ready</span>
+            {#each COLUMNS as column (column.key)}
+              {#if column.key === "status"}
+                <td class="wrap">
+                  {#if contact.eligible}
+                    <span class="badge ok">ready</span>
+                  {:else}
+                    <span class="badge muted" title={contact.skipReason ?? ""}>skipped</span>
+                    <div class="hint">{contact.skipReason}</div>
+                  {/if}
+                </td>
               {:else}
-                <span class="badge muted" title={contact.skipReason ?? ""}>skipped</span>
-                <div class="hint">{contact.skipReason}</div>
+                <td class:mono={column.mono}>{column.value(contact) ?? "—"}</td>
               {/if}
-            </td>
+            {/each}
             <td>
               <button class="link" onclick={() => (editor = contact)}>Edit</button>
               <button

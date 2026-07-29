@@ -168,6 +168,28 @@ pub struct EligibilityDefaults<'a> {
     pub minutes_expire: u32,
 }
 
+/// Resolves how a participant is contacted, independent of whether they are currently
+/// eligible to be scheduled.
+///
+/// Kept separate from [`contact_eligibility`] because the UI needs to show a delivery
+/// channel for everyone, including participants who have already been scheduled and so
+/// are not eligible. `Err` explains why no channel could be determined.
+pub fn delivery_method(embedded: &BTreeMap<String, String>) -> Result<Method, String> {
+    let contact_method = embedded
+        .get("ContactMethod")
+        .map(|s| s.trim().to_ascii_uppercase())
+        .unwrap_or_default();
+    let use_sms = int_field(embedded, "UseSMS").unwrap_or(0);
+    // ContactMethod wins when set; UseSMS is the legacy fallback.
+    match contact_method.as_str() {
+        "EMAIL" => Ok(Method::Email),
+        "SMS" => Ok(Method::Sms),
+        _ if use_sms == 1 => Ok(Method::Sms),
+        "" => Err("no ContactMethod and UseSMS is not 1".into()),
+        other => Err(format!("ContactMethod {other:?} is not 'sms' or 'email'")),
+    }
+}
+
 /// Decides whether a contact should be scheduled, and with what parameters.
 ///
 /// A malformed field yields `Skipped` with a human-readable reason — never an abort.
@@ -188,22 +210,9 @@ pub fn contact_eligibility(
         return Eligibility::Skipped("NumDays is 0 or unset".into());
     }
 
-    let contact_method = embedded
-        .get("ContactMethod")
-        .map(|s| s.trim().to_ascii_uppercase())
-        .unwrap_or_default();
-    let use_sms = int_field(embedded, "UseSMS").unwrap_or(0);
-    // ContactMethod wins when set; UseSMS is the legacy fallback.
-    let method = match contact_method.as_str() {
-        "EMAIL" => Method::Email,
-        "SMS" => Method::Sms,
-        _ if use_sms == 1 => Method::Sms,
-        "" => return Eligibility::Skipped("no ContactMethod and UseSMS is not 1".into()),
-        other => {
-            return Eligibility::Skipped(format!(
-                "ContactMethod {other:?} is not 'sms' or 'email'"
-            ))
-        }
+    let method = match delivery_method(embedded) {
+        Ok(m) => m,
+        Err(reason) => return Eligibility::Skipped(reason),
     };
 
     let slots = match embedded.get("TimeSlots") {

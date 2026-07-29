@@ -11,7 +11,7 @@ use crate::qualtrics::{
     contacts,
     models::{ContactView, RawContact},
 };
-use crate::scheduler::{contact_eligibility, Eligibility, EligibilityDefaults, Method};
+use crate::scheduler::{contact_eligibility, delivery_method, Eligibility, EligibilityDefaults, Method};
 use crate::state::AppState;
 
 /// Projects a raw Qualtrics contact into the table row the UI renders, running the same
@@ -22,20 +22,19 @@ pub fn to_view(contact: &RawContact, project: &Project) -> ContactView {
         timezone: &project.timezone,
         minutes_expire: project.minutes_expire,
     };
-    let (eligible, skip_reason, method) = match contact_eligibility(&embedded, &defaults) {
-        Eligibility::Eligible { method, .. } => (
-            true,
-            None,
-            Some(
-                match method {
-                    Method::Sms => "sms",
-                    Method::Email => "email",
-                }
-                .to_string(),
-            ),
-        ),
-        Eligibility::Skipped(reason) => (false, Some(reason), None),
+    let (eligible, skip_reason) = match contact_eligibility(&embedded, &defaults) {
+        Eligibility::Eligible { .. } => (true, None),
+        Eligibility::Skipped(reason) => (false, Some(reason)),
     };
+    // Resolved separately from eligibility: a participant who has already been scheduled
+    // is not eligible, but the UI still needs to show how they are contacted.
+    let method = delivery_method(&embedded).ok().map(|m| {
+        match m {
+            Method::Sms => "sms",
+            Method::Email => "email",
+        }
+        .to_string()
+    });
 
     ContactView {
         contact_id: contact.id().unwrap_or_default().to_string(),
