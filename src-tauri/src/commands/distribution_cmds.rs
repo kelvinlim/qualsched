@@ -65,6 +65,9 @@ pub async fn list_distributions(
     )
     .await?;
     let mut names: HashMap<String, String> = HashMap::new();
+    // Each participant keeps their own TimeZone, so the local column has to be resolved
+    // per recipient rather than once for the table.
+    let mut zones: HashMap<String, String> = HashMap::new();
     for contact in &raw {
         if let Ok(lookup) = contacts::resolve_contact_lookup_id(
             &client,
@@ -74,12 +77,23 @@ pub async fn list_distributions(
         )
         .await
         {
-            names.insert(lookup, display_name(contact));
+            let zone = contact
+                .embedded()
+                .get("TimeZone")
+                .map(|z| z.trim().to_string())
+                .filter(|z| !z.is_empty())
+                .unwrap_or_else(|| project.embedded_defaults.time_zone.clone());
+            names.insert(lookup.clone(), display_name(contact));
+            zones.insert(lookup, zone);
         }
     }
     for row in &mut rows {
         if let Some(name) = names.get(&row.contact_lookup_id) {
             row.contact_name = name.clone();
+        }
+        if let Some(zone) = zones.get(&row.contact_lookup_id) {
+            row.send_local =
+                distributions::local_send_time(&row.send_date, zone).unwrap_or_default();
         }
     }
     rows.sort_by(|a, b| a.send_date.cmp(&b.send_date));

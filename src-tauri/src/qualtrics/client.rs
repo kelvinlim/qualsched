@@ -34,12 +34,19 @@ impl QualtricsClient {
         )
     }
 
+    /// Attaches the API token.
+    ///
+    /// Content-Type is deliberately not set here. `reqwest`'s `header` appends rather
+    /// than replaces, so adding it on top of the one `.json()` already wrote sent
+    /// `Content-Type` twice on every POST and PUT; Qualtrics reads the joined value and
+    /// rejects the request with "Invalid Content-Type. Expected application/json".
+    /// GET and DELETE carry no body and need no Content-Type at all.
+    fn prepare(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        req.header("x-api-token", &self.token)
+    }
+
     async fn send(&self, req: reqwest::RequestBuilder) -> AppResult<Value> {
-        let resp = req
-            .header("x-api-token", &self.token)
-            .header("Content-Type", "application/json")
-            .send()
-            .await?;
+        let resp = self.prepare(req).send().await?;
 
         let status = resp.status();
         let text = resp.text().await?;
@@ -135,6 +142,35 @@ fn truncate(s: &str, n: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use reqwest::header::CONTENT_TYPE;
+    use serde_json::json;
+
+    fn client() -> QualtricsClient {
+        QualtricsClient::new("yul1", "token", true).unwrap()
+    }
+
+    // A second Content-Type header made Qualtrics reject every write.
+    #[test]
+    fn body_requests_send_one_content_type() {
+        let c = client();
+        for req in [
+            c.http.post(c.url("directories/x/contacts")),
+            c.http.put(c.url("directories/x/contacts/y")),
+        ] {
+            let built = c.prepare(req.json(&json!({"a": 1}))).build().unwrap();
+            let values: Vec<_> = built.headers().get_all(CONTENT_TYPE).iter().collect();
+            assert_eq!(values, vec!["application/json"]);
+        }
+    }
+
+    #[test]
+    fn bodyless_requests_send_no_content_type() {
+        let c = client();
+        for req in [c.http.get(c.url("directories")), c.http.delete(c.url("x"))] {
+            let built = c.prepare(req).build().unwrap();
+            assert!(built.headers().get(CONTENT_TYPE).is_none());
+        }
+    }
 
     // The error envelope shape is the one contract we can pin without a live API.
     #[test]
@@ -163,3 +199,4 @@ mod tests {
         assert!(st.starts_with("200"));
     }
 }
+

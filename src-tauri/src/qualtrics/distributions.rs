@@ -1,4 +1,5 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono_tz::Tz;
 use serde_json::{json, Value};
 
 use super::{
@@ -12,6 +13,33 @@ pub const QUALTRICS_TIME_FMT: &str = "%Y-%m-%dT%H:%M:%SZ";
 
 pub fn fmt_time(t: DateTime<Utc>) -> String {
     t.format(QUALTRICS_TIME_FMT).to_string()
+}
+
+/// Renders a Qualtrics `sendDate` as wall-clock time in `timezone`.
+///
+/// Formatted like the Schedule screen's local column so the same invitation reads the
+/// same before and after it is booked. Returns None rather than a guess when the date
+/// or the zone cannot be parsed — a wrong local time is worse than none in a study that
+/// spans timezones.
+pub fn local_send_time(send_date: &str, timezone: &str) -> Option<String> {
+    let tz: Tz = timezone.trim().parse().ok()?;
+    let utc = parse_send_date(send_date)?;
+    Some(
+        utc.with_timezone(&tz)
+            .format("%Y-%m-%d %H:%M %Z")
+            .to_string(),
+    )
+}
+
+/// Qualtrics sends the trailing-Z form; RFC 3339 is accepted as a fallback in case a
+/// list response ever carries an offset instead.
+fn parse_send_date(raw: &str) -> Option<DateTime<Utc>> {
+    if let Ok(naive) = NaiveDateTime::parse_from_str(raw.trim(), QUALTRICS_TIME_FMT) {
+        return Some(naive.and_utc());
+    }
+    DateTime::parse_from_rfc3339(raw.trim())
+        .ok()
+        .map(|t| t.with_timezone(&Utc))
 }
 
 pub struct SendRequest<'a> {
@@ -110,6 +138,7 @@ pub async fn list_distributions(
                     .unwrap_or_default()
                     .to_string(),
                 contact_name: String::new(), // filled in by the command layer from the contact list
+                send_local: String::new(),   // ditto: needs the recipient's timezone
                 unsent: send_date > now_str,
                 send_date,
                 method,
@@ -133,4 +162,50 @@ pub async fn delete_distribution(
     };
     client.delete(&path).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn renders_utc_in_the_recipients_zone() {
+        // 13:30 UTC is 08:30 in Chicago during CDT.
+        assert_eq!(
+            local_send_time("2026-07-29T13:30:00Z", "America/Chicago").unwrap(),
+            "2026-07-29 08:30 CDT"
+        );
+    }
+
+    #[test]
+    fn tracks_the_offset_in_effect_on_that_date() {
+        // Same clock time in winter is CST, an hour further back.
+        assert_eq!(
+            local_send_time("2026-01-15T13:30:00Z", "America/Chicago").unwrap(),
+            "2026-01-15 07:30 CST"
+        );
+    }
+
+    #[test]
+    fn crosses_the_date_line_where_the_zone_demands_it() {
+        assert_eq!(
+            local_send_time("2026-07-29T23:30:00Z", "Asia/Tokyo").unwrap(),
+            "2026-07-30 08:30 JST"
+        );
+    }
+
+    #[test]
+    fn refuses_to_guess_on_bad_input() {
+        assert!(local_send_time("2026-07-29T13:30:00Z", "Mars/Olympus").is_none());
+        assert!(local_send_time("2026-07-29T13:30:00Z", "").is_none());
+        assert!(local_send_time("not a date", "America/Chicago").is_none());
+    }
+
+    #[test]
+    fn accepts_an_offset_form_too() {
+        assert_eq!(
+            local_send_time("2026-07-29T13:30:00+00:00", "America/Chicago").unwrap(),
+            "2026-07-29 08:30 CDT"
+        );
+    }
 }

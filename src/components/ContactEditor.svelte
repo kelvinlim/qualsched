@@ -127,6 +127,10 @@
             <option value="sms">sms</option>
             <option value="email">email</option>
           </select>
+        {:else if field.key === "StartDate"}
+          <!-- Matches the profile screen's default start date, and gives the
+               native picker, which opens on today when the field is empty. -->
+          <input id={`emb-${field.key}`} type="date" bind:value={embedded[field.key]} />
         {:else}
           <input id={`emb-${field.key}`} type="text" bind:value={embedded[field.key]} />
         {/if}

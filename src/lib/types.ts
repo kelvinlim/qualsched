@@ -120,6 +120,8 @@ export interface DistributionRow {
   contactLookupId: string;
   contactName: string;
   sendDate: string;
+  /** Wall-clock time in the recipient's own timezone; empty when it is unknown. */
+  sendLocal: string;
   method: Method;
   unsent: boolean;
 }

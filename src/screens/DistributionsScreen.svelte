@@ -141,6 +141,7 @@
             />
           </th>
           <th>Participant</th>
+          <th>Send time (local)</th>
           <th>Send time (UTC)</th>
           <th>Status</th>
           <th>ID</th>
@@ -158,6 +159,7 @@
               />
             </td>
             <td>{row.contactName || "(unknown)"}</td>
+            <td class="mono">{row.sendLocal || "—"}</td>
             <td class="mono">{row.sendDate.replace("T", " ").replace("Z", "")}</td>
             <td>
               {#if row.unsent}
