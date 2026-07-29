@@ -84,7 +84,7 @@ pub struct ContactView {
     pub eligible: bool,
     /// Why this contact will be skipped; `None` when eligible.
     pub skip_reason: Option<String>,
-    /// Resolved delivery method when eligible.
+    /// How this participant is contacted, whether or not they are currently eligible.
     pub method: Option<String>,
 }
 
