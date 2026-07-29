@@ -112,7 +112,49 @@ jobs:
         run: cargo test --release --locked
 
       - name: Build installer
+        if: runner.os == 'Windows'
         run: npm run tauri build
+
+      # The notary service needs the App Store Connect key as a file on disk.
+      - name: Write App Store Connect API key
+        if: runner.os == 'macOS'
+        run: |
+          echo "$APPLE_API_KEY_CONTENT" > "$RUNNER_TEMP/AuthKey.p8"
+          chmod 600 "$RUNNER_TEMP/AuthKey.p8"
+        env:
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+
+      # APPLE_CERTIFICATE makes Tauri import the identity into a throwaway keychain,
+      # sign with APPLE_SIGNING_IDENTITY, and notarize + staple the .app via the
+      # App Store Connect API key.
+      - name: Build installer (signed + notarized)
+        if: runner.os == 'macOS'
+        run: npm run tauri build
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+
+      # Tauri notarizes only the .app; an unnotarized DMG wrapper still triggers a
+      # Gatekeeper warning on download, so notarize and staple the DMG itself too.
+      - name: Notarize and staple DMG
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          dmg=$(ls src-tauri/target/release/bundle/dmg/*.dmg)
+          xcrun notarytool submit "$dmg" \
+            --key "$RUNNER_TEMP/AuthKey.p8" \
+            --key-id "$APPLE_API_KEY" \
+            --issuer "$APPLE_API_ISSUER" \
+            --wait
+          xcrun stapler staple "$dmg"
+          spctl -a -vv -t open --context context:primary-signature "$dmg"
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
 
       # Runs on every trigger, so a manual dispatch still yields a downloadable build.
       - name: Upload installer as workflow artifact
@@ -166,14 +208,5 @@ jobs:
             QualSched to Applications. Apple Silicon only — it will not run on an
             Intel Mac.
 
-            The app is ad-hoc signed rather than notarised, so the first launch
-            reports that QualSched "is damaged and can't be opened". It is not
-            damaged: macOS quarantines downloads that Apple has not notarised.
-            Clear the quarantine flag once, in Terminal:
-
-            ```
-            xattr -dr com.apple.quarantine /Applications/QualSched.app
-            ```
-
-            Then open it normally. Right-click → Open does not work for ad-hoc
-            signed apps, so the command above is the way through.
+            The app is Developer ID signed and notarized by Apple, so it opens
+            normally with no security warnings.
