@@ -24,6 +24,14 @@ export interface Project {
   minutesExpire: number;
   emailHeader: EmailHeader;
   embeddedDefaults: EmbeddedDefaults;
+  /** Managed clones of surveyId, in rotation order. Written only by createSurveyCopies. */
+  surveyCopies: SurveyCopy[];
+  copiesSourceSurveyId: string;
+}
+
+export interface SurveyCopy {
+  id: string;
+  name: string;
 }
 
 export interface EmailHeader {
@@ -84,6 +92,9 @@ export interface PlanItem {
   method: Method;
   dayIndex: number;
   slotLabel: string;
+  /** The survey this slot sends through: the profile's own, or one of its copies. */
+  surveyId: string;
+  surveyLabel: string;
   sendLocal: string;
   sendUtc: string;
   expireUtc: string;
@@ -124,6 +135,29 @@ export interface DistributionRow {
   sendLocal: string;
   method: Method;
   unsent: boolean;
+  /** Needed to cancel the row: a copy's distribution can't be cancelled with the
+   * profile's own survey id. */
+  surveyId: string;
+  surveyLabel: string;
+}
+
+/** One row to cancel, paired with the survey it was created against. */
+export interface DeleteTarget {
+  id: string;
+  surveyId: string;
+}
+
+export interface CopyReport {
+  created: SurveyCopy[];
+  failed: { name: string; error: string }[];
+  config: AppConfig;
+}
+
+export interface SurveyCopyProgress {
+  done: number;
+  total: number;
+  name: string;
+  ok: boolean;
 }
 
 export interface RemovedContact {

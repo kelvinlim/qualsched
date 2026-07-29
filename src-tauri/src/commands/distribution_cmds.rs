@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use chrono::Utc;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{Emitter, State, Window};
 use uuid::Uuid;
 
@@ -38,6 +38,15 @@ pub struct DeleteReport {
 pub struct DeleteFailure {
     pub id: String,
     pub error: String,
+}
+
+/// A row to cancel. The survey id travels with the id because a distribution created
+/// against one of the project's survey copies cannot be cancelled with the project's own.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteTarget {
+    pub id: String,
+    pub survey_id: String,
 }
 
 /// Lists a project's distributions, resolving each recipient's CGC id back to a name so
@@ -107,23 +116,26 @@ pub async fn delete_distributions(
     account_id: Uuid,
     project_id: Uuid,
     method: Method,
-    ids: Vec<String>,
+    targets: Vec<DeleteTarget>,
 ) -> AppResult<DeleteReport> {
-    let project = {
+    // Resolving still validates the account/project pair before any deletes go out.
+    {
         let cfg = state.config().await;
-        resolve(&cfg, account_id, project_id)?.1.clone()
-    };
+        resolve(&cfg, account_id, project_id)?;
+    }
     let client = state.client(account_id).await?;
 
-    let total = ids.len();
+    let total = targets.len();
     let mut deleted = 0usize;
     let mut failed = Vec::new();
 
-    for (index, id) in ids.iter().enumerate() {
-        match distributions::delete_distribution(&client, &project, method, id).await {
+    for (index, target) in targets.iter().enumerate() {
+        match distributions::delete_distribution(&client, &target.survey_id, method, &target.id)
+            .await
+        {
             Ok(()) => deleted += 1,
             Err(e) => failed.push(DeleteFailure {
-                id: id.clone(),
+                id: target.id.clone(),
                 error: e.to_string(),
             }),
         }
@@ -180,7 +192,7 @@ pub async fn cancel_pending_for_contact(
     let mut deleted = 0usize;
     let mut failed = Vec::new();
     for row in targets {
-        match distributions::delete_distribution(client, project, method, &row.id).await {
+        match distributions::delete_distribution(client, &row.survey_id, method, &row.id).await {
             Ok(()) => deleted += 1,
             Err(e) => failed.push(DeleteFailure {
                 id: row.id.clone(),

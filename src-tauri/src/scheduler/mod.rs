@@ -273,6 +273,15 @@ fn int_field(embedded: &BTreeMap<String, String>, key: &str) -> Option<i64> {
 // Plan building
 // ---------------------------------------------------------------------------
 
+/// One survey a day's slots can send through, with the label the UI shows for it
+/// ("original", "c1", "c2", ...).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SurveyRef {
+    pub id: String,
+    pub label: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanItem {
@@ -283,6 +292,11 @@ pub struct PlanItem {
     pub method: Method,
     pub day_index: i64,
     pub slot_label: String,
+    /// The survey this slot sends through. Required rather than defaulted: a plan that
+    /// predates rotation must fail to deserialize instead of silently sending every
+    /// slot of the day through the same survey.
+    pub survey_id: String,
+    pub survey_label: String,
     /// Local wall-clock time in the recipient's timezone, with the zone shown.
     pub send_local: String,
     pub send_utc: DateTime<Utc>,
@@ -303,6 +317,8 @@ pub struct PlanInputs<'a> {
     pub destination: &'a str,
     pub method: Method,
     pub slots: &'a [Slot],
+    /// Surveys in slot order: element `k` serves slot `k` of every day.
+    pub surveys: &'a [SurveyRef],
     pub num_days: i64,
     pub start_date: &'a str,
     pub timezone: &'a str,
@@ -313,6 +329,14 @@ pub struct PlanInputs<'a> {
 ///
 /// Returns the sendable items plus a reason for each slot that was dropped, so the
 /// preview can explain a short plan instead of silently producing fewer invitations.
+///
+/// Slot `k` of every day sends through `input.surveys[k]`, because Qualtrics delivers
+/// only the first invitation for a given survey to a given contact each day. A slot with
+/// no survey left is dropped, never folded onto a survey already used that day. One edge
+/// remains: rotation follows slot position, not the calendar date a send lands on, so a
+/// window that wraps past midnight (`extra_days == 1`) can put its send on the same date
+/// as the next day's send from that same position. It is rare, and collapsing it would
+/// mean re-deriving the rotation from resolved dates rather than slot order.
 pub fn build_contact_plan<R: Rng + ?Sized>(
     input: &PlanInputs,
     now: DateTime<Utc>,
@@ -356,8 +380,22 @@ pub fn build_contact_plan<R: Rng + ?Sized>(
     let cutoff = now + Duration::seconds(PAST_MARGIN_SECONDS);
 
     for day in 0..input.num_days {
-        for slot in input.slots {
+        for (slot_index, slot) in input.slots.iter().enumerate() {
+            // Drawn before the survey check so a short rotation doesn't shift the random
+            // window times the remaining slots get.
             let resolved = resolve_slot(*slot, rng);
+
+            let Some(survey) = input.surveys.get(slot_index) else {
+                skipped.push(skip(format!(
+                    "slot {} of {} has no survey to send through — this profile has {} \
+                     copies, so create more on the profile screen",
+                    slot_index + 1,
+                    input.slots.len(),
+                    input.surveys.len().saturating_sub(1)
+                )));
+                continue;
+            };
+
             let date = match start.checked_add_signed(Duration::days(day + resolved.extra_days)) {
                 Some(d) => d,
                 None => {
@@ -396,6 +434,8 @@ pub fn build_contact_plan<R: Rng + ?Sized>(
                 method: input.method,
                 day_index: day,
                 slot_label: slot_label(*slot),
+                survey_id: survey.id.clone(),
+                survey_label: survey.label.clone(),
                 send_local: local.format("%Y-%m-%d %H:%M %Z").to_string(),
                 send_utc,
                 expire_utc: send_utc + Duration::minutes(input.expire_minutes),

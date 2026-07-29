@@ -39,6 +39,7 @@ pub fn run() {
             commands::config_cmds::clear_account_token,
             commands::config_cmds::test_account,
             commands::lookup_cmds::list_surveys,
+            commands::survey_cmds::create_survey_copies,
             commands::lookup_cmds::list_directories,
             commands::lookup_cmds::list_mailing_lists,
             commands::lookup_cmds::list_messages,

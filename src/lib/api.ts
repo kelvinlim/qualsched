@@ -5,7 +5,9 @@ import type {
   Account,
   AppConfig,
   ContactView,
+  CopyReport,
   DeleteReport,
+  DeleteTarget,
   DistributionRow,
   IdName,
   ImportPreview,
@@ -17,6 +19,7 @@ import type {
   ScheduleProgress,
   SchedulePreview,
   SendReport,
+  SurveyCopyProgress,
   TestResult,
 } from "./types";
 
@@ -47,6 +50,17 @@ export const clearAccountToken = (accountId: string) =>
 
 export const testAccount = (accountId: string) =>
   invoke<TestResult>("test_account", { accountId });
+
+// --- survey copies --------------------------------------------------------
+
+/** Creates whatever copies the profile's time slots call for and it does not have yet. */
+export const createSurveyCopies = (accountId: string, projectId: string) =>
+  invoke<CopyReport>("create_survey_copies", { accountId, projectId });
+
+export const onSurveyCopyProgress = (
+  handler: (p: SurveyCopyProgress) => void,
+): Promise<UnlistenFn> =>
+  listen<SurveyCopyProgress>("surveys://progress", (e) => handler(e.payload));
 
 // --- lookups --------------------------------------------------------------
 
@@ -138,13 +152,13 @@ export const deleteDistributions = (
   accountId: string,
   projectId: string,
   method: Method,
-  ids: string[],
+  targets: DeleteTarget[],
 ) =>
   invoke<DeleteReport>("delete_distributions", {
     accountId,
     projectId,
     method,
-    ids,
+    targets,
   });
 
 export const deleteUnsentForContact = (

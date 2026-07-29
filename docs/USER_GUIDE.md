@@ -371,6 +371,34 @@ refuses to send two identical messages to the same person on the same day, so Qu
 appends a few random characters to keep them distinct. Participants see it; it is
 harmless.
 
+### Survey copies
+
+If your participants get more than one invitation a day, you need this card.
+
+Qualtrics delivers only the **first** invitation for a given survey to a given person each
+day. The later ones are not rejected — they are accepted, scheduled, and then quietly
+dropped, reporting zero sends. Making the messages different does not help; the limit is on
+the survey, not the wording.
+
+The way through is to send each administration of the day through a different survey. Press
+**Create N copies** and QualSched clones your survey in Qualtrics as many times as your time
+slots need, naming them after the original with `-c1`, `-c2` and so on. The first slot of
+each day then uses your original survey, the second uses `-c1`, the third `-c2`, and the
+pattern repeats every day.
+
+Three things to know:
+
+- The copies are **real surveys in your Qualtrics account**. Deleting the profile here does
+  not remove them.
+- **Responses arrive on whichever copy the participant answered.** When you export data, pull
+  it from the original *and* every copy, then merge — otherwise most of your day will look
+  like missing data.
+- **Editing the original later does not change the copies.** If you revise the questionnaire,
+  delete the copies in Qualtrics and create them again.
+
+If a profile has fewer copies than it has time slots, the extra slots are skipped when you
+compute a plan, and the Schedule screen tells you which ones and why.
+
 ### Email sender
 
 ![The email sender and scheduling defaults cards](images/06-profile-defaults.png)
