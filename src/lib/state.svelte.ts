@@ -93,6 +93,8 @@ export function newProject(name = "New project"): Project {
       logData: "[]",
       timeZone: "America/Chicago",
     },
+    surveyCopies: [],
+    copiesSourceSurveyId: "",
   };
 }
 

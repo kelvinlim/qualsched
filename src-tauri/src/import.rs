@@ -100,6 +100,9 @@ pub fn parse_config(yaml_text: &str, source_name: &str) -> AppResult<Imported> {
         // the defaults and let the user correct them.
         email_header: EmailHeader::default(),
         embedded_defaults,
+        // Copies are created on demand from the profile screen, never by an import.
+        survey_copies: Vec::new(),
+        copies_source_survey_id: String::new(),
     };
 
     if project.message_id_email.is_empty() {

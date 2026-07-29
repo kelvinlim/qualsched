@@ -11,6 +11,8 @@
   let notice = $state("");
   let busy = $state(false);
   let confirmDelete = $state(false);
+  let confirmCopies = $state(false);
+  let copyProgress = $state<{ done: number; total: number } | null>(null);
   let messagePreview = $state("");
 
   $effect(() => {
@@ -51,6 +53,61 @@
   let slotsError = $derived(
     draft ? slotsProblem(draft.embeddedDefaults.timeSlots) : "",
   );
+
+  function slotCount(raw: string): number {
+    return (raw.trim().match(/\[[^\]]*\]|[^,]+/g) ?? []).filter((t) => t.trim()).length;
+  }
+
+  let slotsPerDay = $derived(draft ? slotCount(draft.embeddedDefaults.timeSlots) : 0);
+  // Copies are created by their own command, so they live on the saved project rather
+  // than the draft the form edits.
+  let copies = $derived(app.project?.surveyCopies ?? []);
+  let copiesNeeded = $derived(Math.max(0, slotsPerDay - 1));
+  let copiesMissing = $derived(Math.max(0, copiesNeeded - copies.length));
+  let copiesFromAnotherSurvey = $derived(
+    !!app.project?.copiesSourceSurveyId &&
+      !!draft?.surveyId &&
+      app.project.copiesSourceSurveyId !== draft.surveyId,
+  );
+
+  async function makeCopies() {
+    if (!draft || !app.account) return;
+    busy = true;
+    error = "";
+    notice = "";
+    copyProgress = { done: 0, total: copiesMissing };
+    let unlisten: (() => void) | undefined;
+    try {
+      unlisten = await api.onSurveyCopyProgress((p) => (copyProgress = p));
+      const accountId = app.account.id;
+      const projectId = draft.id;
+      const report = await api.createSurveyCopies(accountId, projectId);
+      app.apply(report.config);
+      app.select(accountId, projectId);
+      // The survey list is cached for a few minutes; without this the new copies would
+      // not show up in the Survey dropdown or the not-found check below.
+      await cache.surveys(accountId, true);
+      if (report.failed.length) {
+        error = `${report.failed[0].name}: ${report.failed[0].error}`;
+      }
+      notice = report.created.length
+        ? `Created ${report.created.length} ${report.created.length === 1 ? "copy" : "copies"}.`
+        : "Nothing to create — this profile already has enough copies.";
+    } catch (e) {
+      error = errorMessage(e);
+    } finally {
+      unlisten?.();
+      copyProgress = null;
+      busy = false;
+    }
+  }
+
+  async function saveThenCopy() {
+    // The copy count comes from the saved time slots, so an unsaved edit would create a
+    // different number than the confirmation just described.
+    await save();
+    if (!error) confirmCopies = true;
+  }
 
   function addProject() {
     if (!app.account) return;
@@ -165,6 +222,70 @@
                 }),
               )}
           />
+        </div>
+
+        <div class="card">
+          <h2>Survey copies</h2>
+          <p class="hint" style="margin-top: -0.4rem; margin-bottom: 0.85rem;">
+            Qualtrics delivers only the first invitation for a survey to a participant
+            each day. Each administration after the first therefore sends through a copy
+            of the survey: the first slot of the day uses the survey above, the second
+            uses <code>-c1</code>, and so on.
+          </p>
+
+          {#if copiesFromAnotherSurvey}
+            <div class="banner warn">
+              These copies were made from a different survey than the one selected above.
+              Sending would mix the two — replace them by deleting the copies in Qualtrics
+              and creating them again.
+            </div>
+          {/if}
+
+          {#if copies.length}
+            <table class="copies">
+              <thead>
+                <tr><th>Slot</th><th>Survey</th><th>ID</th></tr>
+              </thead>
+              <tbody>
+                {#each copies as copy, i}
+                  <tr>
+                    <td>{i + 2}</td>
+                    <td>{copy.name}</td>
+                    <td class="mono">{copy.id}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          {:else}
+            <p class="hint">No copies yet.</p>
+          {/if}
+
+          {#if slotsPerDay > 1 && copiesMissing > 0}
+            <div class="banner warn" style="margin-top: 0.85rem;">
+              {slotsPerDay} slots a day need {copiesNeeded}
+              {copiesNeeded === 1 ? "copy" : "copies"}; this profile has {copies.length}.
+              Slots without a copy are skipped when you compute a plan.
+            </div>
+          {/if}
+
+          {#if copyProgress}
+            <div style="margin-top: 0.85rem;">
+              <p>Creating {copyProgress.done} of {copyProgress.total}…</p>
+              <progress value={copyProgress.done} max={copyProgress.total || 1}></progress>
+            </div>
+          {/if}
+
+          <div class="row" style="margin-top: 0.85rem;">
+            <button
+              type="button"
+              onclick={saveThenCopy}
+              disabled={busy || !draft.surveyId || !!slotsError || copiesMissing === 0}
+            >
+              {busy && copyProgress
+                ? "Creating…"
+                : `Create ${copiesMissing} ${copiesMissing === 1 ? "copy" : "copies"}`}
+            </button>
+          </div>
         </div>
 
         <div class="card">
@@ -315,6 +436,14 @@
           confirmLabel="Delete"
           danger
           onconfirm={removeProject}
+        />
+
+        <ConfirmDialog
+          bind:open={confirmCopies}
+          title={`Create ${copiesMissing} survey ${copiesMissing === 1 ? "copy" : "copies"}?`}
+          body={`This creates ${copiesMissing} real ${copiesMissing === 1 ? "survey" : "surveys"} in Qualtrics, named after the selected survey with -c suffixes. They are not removed when this profile is deleted, and responses collected through them live on each copy rather than the original.`}
+          confirmLabel="Create"
+          onconfirm={makeCopies}
         />
       {/if}
     </div>

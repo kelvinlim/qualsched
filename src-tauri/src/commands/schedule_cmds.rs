@@ -93,6 +93,9 @@ pub async fn preview_schedule(
     let mut items = Vec::new();
     let mut skipped_contacts = Vec::new();
     let mut skipped_slots = Vec::new();
+    // Slot k of each day sends through rotation[k], so a participant never gets two
+    // invitations for the same survey in one day.
+    let rotation = project.survey_rotation();
 
     for contact in &raw {
         let name = display_name(contact);
@@ -139,6 +142,7 @@ pub async fn preview_schedule(
                     destination: &destination,
                     method,
                     slots: &slots,
+                    surveys: &rotation,
                     num_days,
                     start_date: &start_date,
                     timezone: &timezone,
@@ -219,6 +223,7 @@ pub async fn execute_schedule(
 
     let now = Utc::now();
     let mut rng = StdRng::from_entropy();
+    let rotation = project.survey_rotation();
 
     for item in &plan.items {
         done += 1;
@@ -249,6 +254,20 @@ pub async fn execute_schedule(
             emit(&window, done, total, &item.contact_name, false);
             continue;
         };
+
+        // The profile's survey or its copies may have changed since the preview.
+        if !rotation.iter().any(|s| s.id == item.survey_id) {
+            failed.push(fail(
+                format!(
+                    "this plan sends through survey {}, which is no longer part of the \
+                     profile; re-run the preview",
+                    item.survey_id
+                ),
+                false,
+            ));
+            emit(&window, done, total, &item.contact_name, false);
+            continue;
+        }
 
         let lookup_id = match resolve_lookup_id(
             &client,
@@ -304,6 +323,7 @@ pub async fn execute_schedule(
         let text = decorate_message(&body, &mut rng);
         let req = SendRequest {
             project: &project,
+            survey_id: &item.survey_id,
             contact_lookup_id: &lookup_id,
             message_text: &text,
             send_at: item.send_utc,

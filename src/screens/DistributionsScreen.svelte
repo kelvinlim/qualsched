@@ -45,11 +45,17 @@
     progress = { done: 0, total: selected.size };
     const unlisten = await api.onDeleteProgress((p) => (progress = p));
     try {
+      // A copy's invitation can only be cancelled against the survey it was created
+      // for, so each id travels with its own.
+      const targets = [...selected].flatMap((id) => {
+        const row = rows.find((r) => r.id === id);
+        return row ? [{ id, surveyId: row.surveyId }] : [];
+      });
       const report = await api.deleteDistributions(
         app.account.id,
         app.project.id,
         method,
-        [...selected],
+        targets,
       );
       notice =
         report.failed.length === 0
@@ -141,6 +147,7 @@
             />
           </th>
           <th>Participant</th>
+          <th>Survey</th>
           <th>Send time (local)</th>
           <th>Send time (UTC)</th>
           <th>Status</th>
@@ -159,6 +166,7 @@
               />
             </td>
             <td>{row.contactName || "(unknown)"}</td>
+            <td class="mono">{row.surveyLabel}</td>
             <td class="mono">{row.sendLocal || "—"}</td>
             <td class="mono">{row.sendDate.replace("T", " ").replace("Z", "")}</td>
             <td>

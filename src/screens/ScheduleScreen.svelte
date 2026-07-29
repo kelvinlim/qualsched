@@ -164,6 +164,7 @@
               <th>Method</th>
               <th>Day</th>
               <th>Slot</th>
+              <th>Survey</th>
               <th>Local time</th>
               <th>UTC</th>
               <th>Expires</th>
@@ -177,6 +178,7 @@
                 <td>{item.method}</td>
                 <td>{item.dayIndex + 1}</td>
                 <td class="mono">{item.slotLabel}</td>
+                <td class="mono">{item.surveyLabel}</td>
                 <td class="mono">{item.sendLocal}</td>
                 <td class="mono">{item.sendUtc.replace("T", " ").slice(0, 16)}</td>
                 <td class="mono">{item.expireUtc.replace("T", " ").slice(11, 16)}</td>

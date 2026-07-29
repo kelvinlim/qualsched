@@ -109,4 +109,9 @@ pub struct DistributionRow {
     pub method: Method,
     /// Derived: sendDate is still in the future, so it can be cancelled.
     pub unsent: bool,
+    /// The survey this distribution was created against — the project's own or one of
+    /// its copies. Cancelling an SMS row needs it, and the table shows `survey_label`
+    /// ("original", "c1", ...) so a participant's day reads in order.
+    pub survey_id: String,
+    pub survey_label: String,
 }

@@ -73,6 +73,25 @@ pub struct Project {
     pub email_header: EmailHeader,
     #[serde(default)]
     pub embedded_defaults: EmbeddedDefaults,
+    /// Copies of `survey_id`, in rotation order. Owned by `create_survey_copies`; the
+    /// profile form never writes them, so `save_project` carries them across a save.
+    #[serde(default)]
+    pub survey_copies: Vec<SurveyCopy>,
+    /// The survey the copies were made from, so the UI can warn when `survey_id` later
+    /// changes out from under an existing copy set.
+    #[serde(default)]
+    pub copies_source_survey_id: String,
+}
+
+/// One managed clone of a project's survey, named `<original>-c1`, `-c2`, ...
+///
+/// Qualtrics silently drops a second invitation for the same survey to the same contact
+/// within a day, so each administration of the day has to name a different survey.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SurveyCopy {
+    pub id: String,
+    pub name: String,
 }
 
 impl Project {
@@ -87,6 +106,28 @@ impl Project {
     pub fn reconcile_embedded_defaults(&mut self) {
         self.embedded_defaults.time_zone = self.timezone.clone();
         self.embedded_defaults.expire_minutes = self.minutes_expire as i64;
+    }
+
+    /// The surveys a day's slots rotate through: the original first, then each copy.
+    ///
+    /// Slot `k` of every day sends on element `k`, so a contact never receives two
+    /// invitations for the same survey on the same day. Slots past the end of this list
+    /// are skipped rather than reusing a survey — see `scheduler::build_contact_plan`.
+    pub fn survey_rotation(&self) -> Vec<crate::scheduler::SurveyRef> {
+        std::iter::once(crate::scheduler::SurveyRef {
+            id: self.survey_id.clone(),
+            label: "original".to_string(),
+        })
+        .chain(
+            self.survey_copies
+                .iter()
+                .enumerate()
+                .map(|(i, c)| crate::scheduler::SurveyRef {
+                    id: c.id.clone(),
+                    label: format!("c{}", i + 1),
+                }),
+        )
+        .collect()
     }
 }
 
@@ -187,7 +228,41 @@ mod tests {
             minutes_expire: DEFAULT_MINUTES_EXPIRE,
             email_header: EmailHeader::default(),
             embedded_defaults: EmbeddedDefaults::default(),
+            survey_copies: Vec::new(),
+            copies_source_survey_id: String::new(),
         }
+    }
+
+    // Config files written before survey copies existed must still load.
+    #[test]
+    fn a_project_without_copies_loads_with_none() {
+        let json = r#"{
+            "id": "0e6f9a1c-1f8e-4a3e-9f7a-2b3c4d5e6f70",
+            "name": "Study",
+            "surveyId": "SV_1",
+            "messageId": "MS_1",
+            "mailingListId": "CG_1"
+        }"#;
+        let p: Project = serde_json::from_str(json).expect("legacy project should load");
+        assert!(p.survey_copies.is_empty());
+        assert_eq!(p.copies_source_survey_id, "");
+    }
+
+    #[test]
+    fn rotation_puts_the_original_first_then_copies_in_order() {
+        let mut p = project();
+        p.survey_id = "SV_orig".into();
+        p.survey_copies = vec![
+            SurveyCopy { id: "SV_a".into(), name: "Study-c1".into() },
+            SurveyCopy { id: "SV_b".into(), name: "Study-c2".into() },
+        ];
+
+        let rotation = p.survey_rotation();
+
+        let ids: Vec<&str> = rotation.iter().map(|s| s.id.as_str()).collect();
+        let labels: Vec<&str> = rotation.iter().map(|s| s.label.as_str()).collect();
+        assert_eq!(ids, ["SV_orig", "SV_a", "SV_b"]);
+        assert_eq!(labels, ["original", "c1", "c2"]);
     }
 
     // The profile screen shows one box per value; the seed must follow it. When it did

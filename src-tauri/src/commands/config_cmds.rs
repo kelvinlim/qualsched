@@ -72,7 +72,14 @@ pub async fn save_project(
                 .find(|a| a.id == account_id)
                 .ok_or_else(|| AppError::NotFound("that account no longer exists".into()))?;
             match account.projects.iter_mut().find(|p| p.id == project.id) {
-                Some(existing) => *existing = project,
+                // Survey copies are created by their own command; a form snapshot taken
+                // before that would otherwise erase the records and orphan real surveys.
+                Some(existing) => {
+                    project.survey_copies = std::mem::take(&mut existing.survey_copies);
+                    project.copies_source_survey_id =
+                        std::mem::take(&mut existing.copies_source_survey_id);
+                    *existing = project;
+                }
                 None => account.projects.push(project),
             }
             Ok(())

@@ -8,6 +8,7 @@ use super::{
 };
 use crate::config::{EmailHeader, Project};
 use crate::error::AppResult;
+use crate::scheduler::SurveyRef;
 
 pub const QUALTRICS_TIME_FMT: &str = "%Y-%m-%dT%H:%M:%SZ";
 
@@ -44,6 +45,9 @@ fn parse_send_date(raw: &str) -> Option<DateTime<Utc>> {
 
 pub struct SendRequest<'a> {
     pub project: &'a Project,
+    /// Which survey this invitation points at — the project's own, or one of its copies
+    /// when a later slot of the same day would otherwise be suppressed.
+    pub survey_id: &'a str,
     pub contact_lookup_id: &'a str,
     pub message_text: &'a str,
     pub send_at: DateTime<Utc>,
@@ -55,7 +59,7 @@ pub async fn send_sms(client: &QualtricsClient, req: &SendRequest<'_>) -> AppRes
         "sendDate": fmt_time(req.send_at),
         "surveyLinkExpirationDate": fmt_time(req.expires_at),
         "method": "Invite",
-        "surveyId": req.project.survey_id,
+        "surveyId": req.survey_id,
         "name": "SMS message",
         "recipients": {
             "mailingListId": req.project.mailing_list_id,
@@ -83,7 +87,7 @@ pub async fn send_email(client: &QualtricsClient, req: &SendRequest<'_>) -> AppR
             "subject": subject,
         },
         "surveyLink": {
-            "surveyId": req.project.survey_id,
+            "surveyId": req.survey_id,
             "type": "Individual",
             "expirationDate": fmt_time(req.expires_at),
         },
@@ -105,18 +109,34 @@ fn distribution_id(resp: &Value) -> String {
         .to_string()
 }
 
-/// Lists distributions for a project. `now` decides which rows count as still cancellable.
+/// Lists a project's distributions across its survey and every copy of it, so the table
+/// shows a participant's whole day rather than only the slots that used the original.
+/// `now` decides which rows count as still cancellable.
 pub async fn list_distributions(
     client: &QualtricsClient,
     project: &Project,
     method: Method,
     now: DateTime<Utc>,
 ) -> AppResult<Vec<DistributionRow>> {
+    let mut rows = Vec::new();
+    for survey in project.survey_rotation() {
+        rows.extend(list_for_survey(client, &project.mailing_list_id, &survey, method, now).await?);
+    }
+    Ok(rows)
+}
+
+async fn list_for_survey(
+    client: &QualtricsClient,
+    mailing_list_id: &str,
+    survey: &SurveyRef,
+    method: Method,
+    now: DateTime<Utc>,
+) -> AppResult<Vec<DistributionRow>> {
     let path = match method {
-        Method::Sms => format!("distributions/sms?surveyId={}", project.survey_id),
+        Method::Sms => format!("distributions/sms?surveyId={}", survey.id),
         Method::Email => format!(
             "distributions?mailingListId={}&surveyId={}&distributionRequestType=Invite&useNewPaginationScheme=true",
-            project.mailing_list_id, project.survey_id
+            mailing_list_id, survey.id
         ),
     };
     let elements = client.get_elements(&path).await?;
@@ -142,22 +162,23 @@ pub async fn list_distributions(
                 unsent: send_date > now_str,
                 send_date,
                 method,
+                survey_id: survey.id.clone(),
+                survey_label: survey.label.clone(),
             })
         })
         .collect())
 }
 
+/// `survey_id` must be the one the distribution was created against — a copy's row
+/// cannot be cancelled with the project's own survey id.
 pub async fn delete_distribution(
     client: &QualtricsClient,
-    project: &Project,
+    survey_id: &str,
     method: Method,
     distribution_id: &str,
 ) -> AppResult<()> {
     let path = match method {
-        Method::Sms => format!(
-            "distributions/sms/{distribution_id}?surveyId={}",
-            project.survey_id
-        ),
+        Method::Sms => format!("distributions/sms/{distribution_id}?surveyId={survey_id}"),
         Method::Email => format!("distributions/{distribution_id}"),
     };
     client.delete(&path).await?;
