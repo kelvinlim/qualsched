@@ -65,10 +65,15 @@ pub async fn confirm_legacy_import(
 ) -> AppResult<AppConfig> {
     let ConfirmImport {
         mut account,
-        project,
+        mut project,
         token,
         token_path,
     } = request;
+
+    // The wizard lets the time zone be edited before importing; without this the edit
+    // would change only the scheduler's fallback and not what new participants are
+    // stamped with.
+    project.reconcile_embedded_defaults();
 
     let token = match token.filter(|t| !t.trim().is_empty()) {
         Some(t) => Some(t),

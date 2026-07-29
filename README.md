@@ -4,6 +4,9 @@ A desktop app for scheduling Qualtrics survey invitations in EMA studies. It rep
 the `qualtrics_util` command-line tool with a GUI that installs without administrator
 rights on Windows, macOS and Linux.
 
+**Running a study with QualSched? Start with the [User Guide](docs/USER_GUIDE.md).** The
+rest of this file is for people building or packaging the app.
+
 > **Note:** this README replaced the original one in this folder, which was overwritten
 > when the Tauri scaffold was unpacked here. Restore anything you need from a backup.
 
@@ -33,6 +36,9 @@ Screens, in the order you use them:
    in the future.
 6. **Import old config** — reads a `config_qualtrics*.yaml` from the CLI and turns it
    into an account plus a survey profile.
+
+Step-by-step instructions for each screen, written for study coordinators, are in the
+[User Guide](docs/USER_GUIDE.md).
 
 ## Where your settings live
 
@@ -71,6 +77,9 @@ instant, and a time that does not exist moves forward to the first valid minute.
 Participants whose contacts carry `Time1`, `Time2`, … integers instead of a `TimeSlots`
 list are supported too, since the Qualtrics web UI cannot author list-valued embedded
 data.
+
+The same rules without the jargon, plus every skip reason and what to do about it, are in
+[the guide](docs/USER_GUIDE.md#reference-the-scheduling-fields).
 
 ### Differences from the command-line tool
 
