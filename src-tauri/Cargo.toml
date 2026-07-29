@@ -1,0 +1,42 @@
+[package]
+name = "qualsched"
+version = "0.1.0"
+description = "Desktop GUI for scheduling Qualtrics survey distributions"
+authors = ["LNPI"]
+edition = "2021"
+
+[lib]
+# The `_lib` suffix keeps the lib name distinct from the bin name (required on Windows).
+name = "qualsched_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls-native-roots",
+] }
+tokio = { version = "1", features = ["time", "sync"] }
+
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+rand = "0.8"
+uuid = { version = "1", features = ["v4", "serde"] }
+keyring = { version = "3", features = [
+    "apple-native",
+    "windows-native",
+    "sync-secret-service",
+] }
+thiserror = "2"
+
+[dev-dependencies]
+rand = { version = "0.8", features = ["small_rng"] }
