@@ -1,0 +1,18 @@
+# linked folders
+lnpi_qualtrics
+
+qualtrics_token*
+
+# node
+node_modules
+dist
+.DS_Store
+
+# vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# env / secrets
+.env
+.env.*
+!.env.example
