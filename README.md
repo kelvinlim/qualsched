@@ -28,14 +28,14 @@ Screens, in the order you use them:
    email sender details, and the default scheduling values for new participants.
    Dropdowns fill themselves from the Qualtrics API.
 3. **Contacts** — the mailing list with each participant's scheduling fields, editable
-   in place. A badge shows whether each participant is ready to schedule, and why not
-   when they aren't.
+   in place, searchable by name, phone or email. A badge shows whether each participant
+   is ready to schedule, and why not when they aren't.
 4. **Schedule** — computes the full plan, shows every invitation with local and UTC
    times, then sends after you confirm.
-5. **Distributions** — invitations already booked, with cancellation for anything still
-   in the future.
+5. **Distributions** — invitations already booked, searchable the same way, with
+   cancellation for anything still in the future.
 6. **Import old config** — reads a `config_qualtrics*.yaml` from the CLI and turns it
-   into an account plus a survey profile.
+   into a survey profile, either in a new account or in one you already have.
 
 Step-by-step instructions for each screen, written for study coordinators, are in the
 [User Guide](docs/USER_GUIDE.md).

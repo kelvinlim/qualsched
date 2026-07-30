@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as api from "../lib/api";
+  import { matchesQuery } from "../lib/filter";
   import { app } from "../lib/state.svelte";
   import { errorMessage, type ContactView } from "../lib/types";
   import ContactEditor from "../components/ContactEditor.svelte";
@@ -61,9 +62,16 @@
   let pendingRemoval = $state<ContactView | null>(null);
   let confirmRemove = $state(false);
   let sort = $state<{ key: string; dir: SortDir }>({ key: "name", dir: "asc" });
+  let query = $state("");
 
   $effect(() => {
     if (app.hasProject) void load();
+  });
+
+  // Its own effect rather than a line in load(): Refresh should not wipe what was typed.
+  $effect(() => {
+    void app.selectedProjectId;
+    query = "";
   });
 
   async function load() {
@@ -88,10 +96,14 @@
   }
 
   function toggleAll() {
-    selected =
-      selected.size === contacts.length
-        ? new Set()
-        : new Set(contacts.map((c) => c.contactId));
+    const next = new Set(selected);
+    // A subset test, not a size comparison: two different sets can be the same size.
+    if (matching.length > 0 && matching.every((c) => next.has(c.contactId))) {
+      for (const contact of matching) next.delete(contact.contactId);
+    } else {
+      for (const contact of matching) next.add(contact.contactId);
+    }
+    selected = next;
   }
 
   async function save(core: Record<string, string>, embedded: Record<string, string>) {
@@ -108,6 +120,8 @@
           embedded,
         );
         contacts = [...contacts, created];
+        // Otherwise the notice announces a row the search is hiding.
+        query = "";
         notice = `Added ${displayName(created)} to the mailing list.`;
       } else {
         const updated = await api.updateContact(
@@ -165,20 +179,24 @@
   }
 
   async function applyDefaults() {
-    if (!app.account || !app.project || selected.size === 0) return;
+    if (!app.account || !app.project || selectedVisible.length === 0) return;
     busy = true;
     error = "";
     notice = "";
     try {
+      const applied = selectedVisible;
       const updated = await api.applyEmbeddedDefaults(
         app.account.id,
         app.project.id,
-        [...selected],
+        applied,
       );
       const byId = new Map(updated.map((c) => [c.contactId, c]));
       contacts = contacts.map((c) => byId.get(c.contactId) ?? c);
       notice = `Filled in missing values for ${updated.length} participant(s).`;
-      selected = new Set();
+      // Drop only what was acted on: anything the search is hiding was never sent.
+      const next = new Set(selected);
+      for (const id of applied) next.delete(id);
+      selected = next;
     } catch (e) {
       error = errorMessage(e);
     } finally {
@@ -200,14 +218,29 @@
     return last || first || c.email || c.phone || c.contactId;
   }
 
+  // Counts the whole mailing list, not the search: this is a statement about who can be
+  // scheduled, and scheduling ignores whatever is typed in the search box.
   let eligibleCount = $derived(contacts.filter((c) => c.eligible).length);
+
+  let matching = $derived(
+    contacts.filter((c) =>
+      // sortableName so a name copied out of the table ("Lim, Kelvin") still matches.
+      matchesQuery(query, [c.firstName, c.lastName, sortableName(c), c.phone, c.email]),
+    ),
+  );
+
+  /** Nothing acts on a row the search is hiding — see the same rule on Distributions. */
+  let selectedVisible = $derived(
+    matching.filter((c) => selected.has(c.contactId)).map((c) => c.contactId),
+  );
+  let hiddenSelected = $derived(selected.size - selectedVisible.length);
 
   let sorted = $derived.by(() => {
     const column = COLUMNS.find((c) => c.key === sort.key);
-    if (!column) return contacts;
+    if (!column) return matching;
     // Copy first: sort() mutates, and reordering the source array in place would
     // fight the reactive updates that edit and remove make to it.
-    return [...contacts].sort((a, b) =>
+    return [...matching].sort((a, b) =>
       compareCells(column.value(a), column.value(b), sort.dir),
     );
   });
@@ -215,8 +248,8 @@
 
 <h1>Contacts</h1>
 <p class="subtitle">
-  Participants in <strong>{app.project?.name ?? ""}</strong>'s mailing list, with the
-  embedded data that decides when they get invitations.
+  Participants in this profile's mailing list, with the embedded data that decides when
+  they get invitations.
 </p>
 
 {#if error}<div class="banner error">{error}</div>{/if}
@@ -227,9 +260,25 @@
     + Add participant
   </button>
   <button onclick={load} disabled={loading}>{loading ? "Loading…" : "Refresh"}</button>
-  <button onclick={applyDefaults} disabled={busy || selected.size === 0}>
-    Fill in missing values ({selected.size})
+  <button onclick={applyDefaults} disabled={busy || selectedVisible.length === 0}>
+    Fill in missing values ({selectedVisible.length})
   </button>
+  <input
+    class="search"
+    type="search"
+    bind:value={query}
+    placeholder="Search name, phone or email"
+    aria-label="Search participants"
+  />
+  {#if query.trim()}
+    <span class="hint" style="margin: 0;">{matching.length} of {contacts.length} shown</span>
+  {/if}
+  {#if hiddenSelected > 0}
+    <span class="hint" style="margin: 0;">
+      {hiddenSelected} selected but hidden
+      <button class="link" onclick={() => (selected = new Set())}>clear</button>
+    </span>
+  {/if}
   <span class="spacer"></span>
   <span class="hint">{eligibleCount} of {contacts.length} ready to schedule</span>
 </div>
@@ -243,9 +292,11 @@
   />
 {/if}
 
-{#if contacts.length === 0 && !loading}
+{#if sorted.length === 0 && !loading}
   <div class="empty">
-    No participants in this mailing list, or the list ID is not set on the profile.
+    {contacts.length === 0
+      ? "No participants in this mailing list, or the list ID is not set on the profile."
+      : "No participants match this search."}
   </div>
 {:else}
   <div class="card scroll-x" style="padding: 0;">
@@ -255,7 +306,7 @@
           <th>
             <input
               type="checkbox"
-              checked={selected.size > 0 && selected.size === contacts.length}
+              checked={matching.length > 0 && selectedVisible.length === matching.length}
               onchange={toggleAll}
               aria-label="Select all participants"
             />

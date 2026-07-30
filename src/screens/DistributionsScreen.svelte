@@ -1,11 +1,13 @@
 <script lang="ts">
   import * as api from "../lib/api";
+  import { matchesQuery } from "../lib/filter";
   import { app } from "../lib/state.svelte";
   import { errorMessage, type DistributionRow, type Method } from "../lib/types";
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
 
   let method = $state<Method>("sms");
   let unsentOnly = $state(true);
+  let query = $state("");
   let rows = $state<DistributionRow[]>([]);
   let selected = $state<Set<string>>(new Set());
   let error = $state("");
@@ -20,6 +22,7 @@
     void method;
     rows = [];
     selected = new Set();
+    query = "";
     notice = "";
   });
 
@@ -38,19 +41,16 @@
   }
 
   async function remove() {
-    if (!app.account || !app.project || selected.size === 0) return;
+    if (!app.account || !app.project || selectedRows.length === 0) return;
     deleting = true;
     error = "";
     notice = "";
-    progress = { done: 0, total: selected.size };
+    progress = { done: 0, total: selectedRows.length };
     const unlisten = await api.onDeleteProgress((p) => (progress = p));
     try {
       // A copy's invitation can only be cancelled against the survey it was created
       // for, so each id travels with its own.
-      const targets = [...selected].flatMap((id) => {
-        const row = rows.find((r) => r.id === id);
-        return row ? [{ id, surveyId: row.surveyId }] : [];
-      });
+      const targets = selectedRows.map((r) => ({ id: r.id, surveyId: r.surveyId }));
       const report = await api.deleteDistributions(
         app.account.id,
         app.project.id,
@@ -77,21 +77,38 @@
     selected = next;
   }
 
-  let visible = $derived(unsentOnly ? rows.filter((r) => r.unsent) : rows);
+  let listed = $derived(unsentOnly ? rows.filter((r) => r.unsent) : rows);
+  let visible = $derived(
+    listed.filter((r) =>
+      matchesQuery(query, [r.contactName, r.contactPhone, r.contactEmail]),
+    ),
+  );
+
+  /**
+   * The selection survives a filter change, but nothing ever acts on a row the user
+   * cannot see: every count, the confirmation text and the cancel itself go through this.
+   * Cancelling is irreversible, so the number on the button has to be the number that
+   * goes.
+   */
+  let selectedRows = $derived(visible.filter((r) => selected.has(r.id)));
+  let hiddenSelected = $derived(selected.size - selectedRows.length);
 
   function selectAllVisible() {
-    selected =
-      selected.size === visible.length
-        ? new Set()
-        : new Set(visible.map((r) => r.id));
+    const next = new Set(selected);
+    // A subset test, not a size comparison: two different sets can be the same size.
+    if (visible.length > 0 && visible.every((r) => next.has(r.id))) {
+      for (const row of visible) next.delete(row.id);
+    } else {
+      for (const row of visible) next.add(row.id);
+    }
+    selected = next;
   }
 </script>
 
 <h1>Distributions</h1>
 <p class="subtitle">
-  Invitations already booked with Qualtrics for
-  <strong>{app.project?.name ?? ""}</strong>. Anything still in the future can be
-  cancelled.
+  Invitations already booked with Qualtrics for this profile. Anything still in the future
+  can be cancelled.
 </p>
 
 {#if error}<div class="banner error">{error}</div>{/if}
@@ -110,13 +127,29 @@
     <input id="dist-unsent" type="checkbox" bind:checked={unsentOnly} />
     <label for="dist-unsent">Not yet sent only</label>
   </div>
+  <input
+    class="search"
+    type="search"
+    bind:value={query}
+    placeholder="Search name, phone or email"
+    aria-label="Search invitations"
+  />
+  {#if query.trim()}
+    <span class="hint" style="margin: 0;">{visible.length} of {listed.length} shown</span>
+  {/if}
+  {#if hiddenSelected > 0}
+    <span class="hint" style="margin: 0;">
+      {hiddenSelected} selected but hidden
+      <button class="link" onclick={() => (selected = new Set())}>clear</button>
+    </span>
+  {/if}
   <span class="spacer"></span>
   <button
     class="danger"
     onclick={() => (confirmDelete = true)}
-    disabled={deleting || selected.size === 0}
+    disabled={deleting || selectedRows.length === 0}
   >
-    Cancel selected ({selected.size})
+    Cancel selected ({selectedRows.length})
   </button>
 </div>
 
@@ -131,7 +164,9 @@
   <div class="empty">
     {rows.length === 0
       ? "Nothing loaded yet — press Load."
-      : "No invitations match this filter."}
+      : query.trim()
+        ? "No invitations match this search."
+        : "No invitations match this filter."}
   </div>
 {:else}
   <div class="card scroll-x" style="padding: 0;">
@@ -141,12 +176,14 @@
           <th>
             <input
               type="checkbox"
-              checked={selected.size > 0 && selected.size === visible.length}
+              checked={visible.length > 0 && selectedRows.length === visible.length}
               onchange={selectAllVisible}
               aria-label="Select all shown"
             />
           </th>
           <th>Participant</th>
+          <th>Phone</th>
+          <th>Email</th>
           <th>Survey</th>
           <th>Send time (local)</th>
           <th>Send time (UTC)</th>
@@ -166,6 +203,8 @@
               />
             </td>
             <td>{row.contactName || "(unknown)"}</td>
+            <td class="mono">{row.contactPhone || "—"}</td>
+            <td class="mono">{row.contactEmail || "—"}</td>
             <td class="mono">{row.surveyLabel}</td>
             <td class="mono">{row.sendLocal || "—"}</td>
             <td class="mono">{row.sendDate.replace("T", " ").replace("Z", "")}</td>
@@ -187,7 +226,7 @@
 <ConfirmDialog
   bind:open={confirmDelete}
   title="Cancel these invitations?"
-  body={`${selected.size} invitation(s) will be withdrawn from Qualtrics. Any that have already been sent cannot be recalled.`}
+  body={`${selectedRows.length} invitation(s) will be withdrawn from Qualtrics. Any that have already been sent cannot be recalled.`}
   confirmLabel="Cancel invitations"
   danger
   onconfirm={remove}

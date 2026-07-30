@@ -49,22 +49,33 @@
       </button>
     {/each}
 
-    <div class="context">
-      {#if app.account}
-        <div><strong>{app.account.name}</strong></div>
-        <div>{app.account.dataCenter || "no data center set"}</div>
-        {#if app.project}
-          <div style="margin-top: 0.4rem;">{app.project.name}</div>
-        {:else}
-          <div style="margin-top: 0.4rem;">No survey profile selected</div>
-        {/if}
-      {:else}
-        <div>No account selected</div>
-      {/if}
-    </div>
   </nav>
 
   <main>
+    <!-- Gated on `loaded`: until the config is in, there is nothing true to say, and on a
+         load failure this would otherwise assert "Choose an account" directly above the
+         banner explaining that nothing could be read. -->
+    {#if app.loaded}
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        {#if app.account}
+          <button class="link" onclick={() => app.go("accounts")}>
+            {app.account.name || "(unnamed account)"}
+          </button>
+          {#if app.account.dataCenter}
+            <span class="badge muted">{app.account.dataCenter}</span>
+          {/if}
+          <span class="sep" aria-hidden="true">/</span>
+          <button class="link" onclick={() => app.go("project")}>
+            {app.project
+              ? app.project.name || "(unnamed profile)"
+              : "Choose a survey profile"}
+          </button>
+        {:else}
+          <button class="link" onclick={() => app.go("accounts")}>Choose an account</button>
+        {/if}
+      </nav>
+    {/if}
+
     {#if loadError}
       <div class="banner error">Could not load your settings: {loadError}</div>
     {/if}

@@ -169,7 +169,10 @@ async fn list_for_survey(
                     .and_then(Value::as_str)
                     .unwrap_or_default()
                     .to_string(),
-                contact_name: String::new(), // filled in by the command layer from the contact list
+                // Filled in by the command layer from the contact list.
+                contact_name: String::new(),
+                contact_phone: String::new(),
+                contact_email: String::new(),
                 send_local: String::new(),   // ditto: needs the recipient's timezone
                 unsent: send_date > now_str,
                 send_date,

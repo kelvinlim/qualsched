@@ -147,9 +147,10 @@ Down the left are six screens, in the order you use them:
 **Contacts, Schedule and Distributions stay greyed out** until you have both an account
 and a survey profile selected. That is the whole purpose of setup.
 
-At the bottom left, QualSched always shows which account, data center and profile you are
-working in. Check it before doing anything irreversible — it is the only thing standing
-between you and scheduling the wrong study.
+At the top of every screen, QualSched shows which account and profile you are working in —
+for example **VA / Sleep study**. Check it before doing anything irreversible; it is the
+only thing standing between you and scheduling the wrong study. Both parts are clickable:
+the account name jumps to the Accounts screen, the profile name to Survey profile.
 
 ---
 
@@ -212,18 +213,27 @@ Press **Read config**. Still nothing has been saved.
 ![The import review step, showing the settings found and several warnings](images/03-import-review.png)
 *Everything QualSched pulled out of the file, plus anything it wants to warn you about.*
 
-The four boxes at the top are the only things you can change here:
+**Import into** decides where the profile lands. Leave it on **Create a new account** the
+first time. If you already have an account for this Qualtrics login — a second study on the
+same login, say — pick it here instead, and only the survey profile is brought in: that
+account's API token, data center, contact directory and message library are left exactly as
+they are, and whatever the file says about them is ignored. QualSched warns you if the file
+disagrees with the account you picked, or if that account already has a profile on the same
+survey and mailing list.
 
-- **Account name** — QualSched guesses from the filename, so `config_qualtrics_va.yaml`
-  becomes `VA`. Rename it to whatever you will recognise.
-- **Data center** — check this is right.
-- **Profile name** — this always arrives as "Imported project". Change it to your study's
-  name now; it is the label you will pick from later.
+The boxes below are the only things you can change here:
+
+- **Account name** *(new accounts only)* — QualSched guesses from the filename, so
+  `config_qualtrics_va.yaml` becomes `VA`. Rename it to whatever you will recognise.
+- **Data center** *(new accounts only)* — check this is right.
+- **Profile name** — also guessed from the filename, so `config_qualtrics_sleep_study.yaml`
+  becomes "sleep study". Change it to whatever you will recognise; it is the label you pick
+  from later.
 - **Time zone** — the default for participants who do not specify their own.
 
-Below that is a read-only table of everything else found: the directory, library, survey,
-mailing list, message templates, time slots, contact method, link expiry, whether TLS
-checking is on, and whether a token was found.
+Below that is a read-only table of everything else found: the survey, mailing list, message
+templates, time slots, contact method and link expiry — plus, when you are creating a new
+account, the directory, library, whether TLS checking is on, and whether a token was found.
 
 If the last row says the token was **not** found, an **API token** box appears underneath.
 Paste your token there. You can also skip it and add it on the Accounts screen later — but
@@ -252,11 +262,15 @@ back to a placeholder. Again, only matters if you are sending email.
 
 ## A5. Import
 
-Press **Import**. Your new account is created and selected automatically.
+Press **Import**. The new profile is selected automatically — along with its new account,
+if you made one.
 
-> **There is no duplicate check.** Importing the same file twice creates a second account
-> with identical settings and no warning. If you do it by accident, delete one on the
-> Accounts screen — deleting an account in QualSched changes nothing in Qualtrics.
+> **Importing the same file twice.** Into a new account, it happens silently: you get a
+> second account with identical settings and no warning. Into an account you already have,
+> QualSched warns you first that a profile on the same survey and mailing list is already
+> there, but still lets you go ahead. If you duplicate one by accident, delete it on the
+> Accounts or Survey profile screen — deleting either in QualSched changes nothing in
+> Qualtrics.
 
 ## A6. Finish the account
 
@@ -472,6 +486,12 @@ The rest of this section is that loop in detail.
 **Contacts** shows everybody in your mailing list. Names read "Last, First". Every column
 header is clickable to sort by it — click again to reverse.
 
+The **search box** narrows the list by name, phone number or email. Punctuation in phone
+numbers is ignored, so `612-555-1234` and `6125551234` both find the same person, and
+several words narrow together: `lim 612` matches only rows where both appear. Ticked rows
+that the search hides are never acted on — the button count always tells you exactly how
+many will be changed.
+
 The columns after Phone and Email are the scheduling fields stored in Qualtrics. They keep
 their Qualtrics names on purpose, so they match what you would see there.
 
@@ -565,14 +585,19 @@ the rest still went out, so fix the cause and compute a fresh plan for what is l
 *Everything already booked with Qualtrics, and anything still cancellable.*
 
 Choose **SMS** or **Email** and press **Load**. **Not yet sent only** is ticked by default,
-so you see what is still to come.
+so you see what is still to come. The **search box** narrows the list by name, phone number
+or email — the same as on Contacts, and just as forgiving about how phone numbers are
+punctuated.
 
 Each row shows the send time twice: in the participant's own time zone, and in UTC. Two
 people in different time zones will show the same UTC time with different local times —
 that is correct, not a bug.
 
 The badge reads `scheduled` for invitations still in the future and `sent` for ones already
-delivered. Anything still `scheduled` can be cancelled.
+delivered. Anything still `scheduled` can be cancelled: tick the rows and press **Cancel
+selected**. Rows hidden by the search or by "Not yet sent only" are never cancelled, even
+if you ticked them earlier — the number on the button is always the number that goes, and
+QualSched tells you when a filter is hiding something you had ticked.
 
 ---
 
@@ -811,7 +836,7 @@ Send whoever supports your study:
 
 - What you were doing, and what you expected instead.
 - The exact text of any error message — a screenshot of the whole window is ideal.
-- The version number from the bottom of the sidebar.
+- The version number from the top of the sidebar.
 - Whether **Test connection** on the Accounts screen succeeds.
 
 ---
@@ -833,16 +858,16 @@ window or to the named card — no desktop, no other windows.
 
 | File | What to capture |
 | --- | --- |
-| `01-first-launch.png` | The app with no account at all. Contacts, Schedule and Distributions greyed out; footer reads "No account selected" |
+| `01-first-launch.png` | The app with no account at all. Contacts, Schedule and Distributions greyed out; the breadcrumb at the top reads "Choose an account" |
 | `02-import-choose-files.png` | Import screen, "1. Choose the files" card, both paths filled in, before pressing Read config |
-| `03-import-review.png` | Import screen, "2. Check what was found" — the four editable boxes, the whole read-only table, and the warnings banner with 3+ warnings, all in one tall shot |
+| `03-import-review.png` | Import screen, "2. Check what was found" — the "Import into" dropdown on "Create a new account", the editable boxes, the whole read-only table, and the warnings banner with 3+ warnings, all in one tall shot |
 | `04-accounts-connected.png` | Accounts screen: Connection card, Directory and library card, the button row, and the green "Connected. N directories visible." banner. Token field showing "Stored — type a new one to replace it" |
 | `05-profile-top.png` | Survey profile: profile list at left, "Survey and recipients" and "Invitation templates" cards with all four dropdowns loaded and selected |
 | `06-profile-defaults.png` | Same screen scrolled down: "Email sender" with real values (not the `noreply@` defaults) and "Scheduling defaults" with a valid Time slots and a non-zero Number of days |
-| `07-contacts-list.png` | 5–6 rows with one `ready` badge and two *different* `skipped` reasons visible; two rows ticked so the button reads "Fill in missing values (2)"; the "3 of 6 ready to schedule" counter in frame |
+| `07-contacts-list.png` | 5–6 rows with one `ready` badge and two *different* `skipped` reasons visible; two rows ticked so the button reads "Fill in missing values (2)"; the search box and the "3 of 6 ready to schedule" counter in frame |
 | `08-schedule-preview.png` | After Compute plan: the "N invitations for M participant(s)" heading, about 8 rows showing all eight columns, and the Send button in frame |
 | `09-schedule-result.png` | The green "Scheduled 12 invitation(s)." result with "Everything went through." |
-| `10-distributions.png` | SMS loaded, "Not yet sent only" ticked, several `scheduled` badges, one row selected so the button reads "Cancel selected (1)" |
+| `10-distributions.png` | SMS loaded, "Not yet sent only" ticked, several `scheduled` badges, one row selected so the button reads "Cancel selected (1)"; the search box empty and in frame |
 | `11-contact-editor.png` | The participant editor in **edit** mode, both "Who they are" and "Scheduling" grids fully visible |
 | `12-dropdown-unloaded.png` | Tight crop of one dropdown in its unloaded state: the text box reading "Enter the ID, or load the list above" with the "Load from Qualtrics" link |
 | `13-schedule-skipped.png` | Schedule screen scrolled to show the "N participant(s) skipped" and "N individual time(s) dropped" cards together |

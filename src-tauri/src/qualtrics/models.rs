@@ -101,6 +101,10 @@ pub struct DistributionRow {
     pub id: String,
     pub contact_lookup_id: String,
     pub contact_name: String,
+    /// The recipient's phone and email, carried so the table can be searched by them.
+    /// Empty when the recipient could not be resolved; filled in by the command layer.
+    pub contact_phone: String,
+    pub contact_email: String,
     pub send_date: String,
     /// `send_date` as wall-clock time in the recipient's own timezone, with the zone
     /// shown — the same rendering the Schedule screen uses. Empty when the recipient

@@ -180,4 +180,7 @@ export const confirmLegacyImport = (request: {
   project: Project;
   token?: string;
   tokenPath?: string;
+  /** Set to add the profile to an account that already exists; its settings and stored
+   * token are left untouched and the file's account block is discarded. */
+  targetAccountId?: string;
 }) => invoke<AppConfig>("confirm_legacy_import", { request });
