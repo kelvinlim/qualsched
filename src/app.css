@@ -127,18 +127,33 @@ p {
   cursor: not-allowed;
 }
 
-.sidebar .context {
-  margin-top: auto;
-  padding: 0.75rem 0.5rem 0;
-  border-top: 1px solid var(--border);
-  font-size: 0.82rem;
-  color: var(--muted);
-  line-height: 1.5;
-}
-
 main {
   overflow-y: auto;
   padding: 1.5rem 2rem 3rem;
+}
+
+/* Which account and profile every screen is acting on. Replaced the sidebar's context
+   block, which sat below the nav where nobody was looking. */
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-bottom: 0.75rem;
+}
+/* button.link underlines permanently, which is too heavy for chrome that is on screen
+   all the time, and its padding knocks the crumbs out of line with the separator. */
+.breadcrumb button.link {
+  padding: 0;
+  text-decoration: none;
+}
+.breadcrumb button.link:hover {
+  text-decoration: underline;
+}
+.breadcrumb .sep {
+  color: var(--border);
 }
 
 .subtitle {
@@ -165,6 +180,7 @@ input[type="text"],
 input[type="number"],
 input[type="password"],
 input[type="date"],
+input[type="search"],
 select,
 textarea {
   width: 100%;
@@ -247,6 +263,15 @@ button.link {
 }
 .spacer {
   flex: 1;
+}
+
+/* Table filter box. The shared input rule gives every input the full row width, which is
+   wrong for a control sharing a toolbar; `width: auto` would leave it at the webview's own
+   default, which differs across the three we ship on. */
+.row input.search {
+  width: 16rem;
+  max-width: 100%;
+  flex: 0 0 auto;
 }
 
 .checkbox {

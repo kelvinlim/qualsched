@@ -2,6 +2,28 @@
 
 All notable changes to QualSched are documented in this file.
 
+## [Unreleased]
+
+### Added
+- Import can add a survey profile to an account you already have, instead of
+  always creating a new one. That account's API token, data center, contact
+  directory and message library are left untouched, and the wizard warns when the
+  file disagrees with the account or duplicates a profile already in it.
+- Imported profiles are named after the file they came from rather than all
+  arriving as "Imported project".
+- A search box on Contacts and Distributions, filtering by name, phone number or
+  email. Punctuation in phone numbers is ignored on both sides, so `612-555-1234`
+  and `6125551234` find the same person.
+- Distributions shows each recipient's phone and email.
+- A breadcrumb at the top of every screen showing the account and survey profile in
+  use, each linking to its screen. It replaces the context block that sat at the
+  bottom of the sidebar.
+
+### Fixed
+- Bulk actions no longer touch rows a filter is hiding. Selecting every row, then
+  ticking "Not yet sent only", previously cancelled the hidden ones too while the
+  button and the confirmation dialog both reported a different number.
+
 ## [0.1.5] - 2026-07-30
 
 ### Changed

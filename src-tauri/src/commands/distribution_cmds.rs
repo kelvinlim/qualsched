@@ -51,6 +51,19 @@ pub struct DeleteTarget {
 
 /// Lists a project's distributions, resolving each recipient's CGC id back to a name so
 /// the table is readable.
+/// What the distribution table needs about a recipient, resolved once per contact.
+///
+/// One record rather than a map per field: every one of these is keyed by the same
+/// contactLookupId and filled in the same pass.
+struct Recipient {
+    name: String,
+    /// Each participant keeps their own TimeZone, so the local column has to be resolved
+    /// per recipient rather than once for the table.
+    zone: String,
+    phone: String,
+    email: String,
+}
+
 #[tauri::command]
 pub async fn list_distributions(
     state: State<'_, AppState>,
@@ -73,10 +86,7 @@ pub async fn list_distributions(
         &project.mailing_list_id,
     )
     .await?;
-    let mut names: HashMap<String, String> = HashMap::new();
-    // Each participant keeps their own TimeZone, so the local column has to be resolved
-    // per recipient rather than once for the table.
-    let mut zones: HashMap<String, String> = HashMap::new();
+    let mut recipients: HashMap<String, Recipient> = HashMap::new();
     for contact in &raw {
         if let Ok(lookup) = contacts::resolve_contact_lookup_id(
             &client,
@@ -92,17 +102,24 @@ pub async fn list_distributions(
                 .map(|z| z.trim().to_string())
                 .filter(|z| !z.is_empty())
                 .unwrap_or_else(|| project.embedded_defaults.time_zone.clone());
-            names.insert(lookup.clone(), display_name(contact));
-            zones.insert(lookup, zone);
+            recipients.insert(
+                lookup,
+                Recipient {
+                    name: display_name(contact),
+                    zone,
+                    phone: contact.str_field("phone").unwrap_or_default().to_string(),
+                    email: contact.str_field("email").unwrap_or_default().to_string(),
+                },
+            );
         }
     }
     for row in &mut rows {
-        if let Some(name) = names.get(&row.contact_lookup_id) {
-            row.contact_name = name.clone();
-        }
-        if let Some(zone) = zones.get(&row.contact_lookup_id) {
+        if let Some(recipient) = recipients.get(&row.contact_lookup_id) {
+            row.contact_name = recipient.name.clone();
+            row.contact_phone = recipient.phone.clone();
+            row.contact_email = recipient.email.clone();
             row.send_local =
-                distributions::local_send_time(&row.send_date, zone).unwrap_or_default();
+                distributions::local_send_time(&row.send_date, &recipient.zone).unwrap_or_default();
         }
     }
     rows.sort_by(|a, b| a.send_date.cmp(&b.send_date));

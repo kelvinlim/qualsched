@@ -89,7 +89,7 @@ pub fn parse_config(yaml_text: &str, source_name: &str) -> AppResult<Imported> {
 
     let project = Project {
         id: Uuid::new_v4(),
-        name: "Imported project".into(),
+        name: suggest_project_name(source_name),
         survey_id: str_at(project_section, "SURVEY_ID").unwrap_or_default(),
         message_id: str_at(project_section, "MESSAGE_ID").unwrap_or_default(),
         message_id_email,
@@ -285,19 +285,38 @@ pub fn parse_token_file(text: &str) -> Option<String> {
         .filter(|t| !t.is_empty())
 }
 
-fn suggest_account_name(source_name: &str, data_center: &str) -> String {
-    let stem = source_name
+/// What is left of a config file's name once the path, the extension and the
+/// `config_qualtrics` prefix every one of them shares are taken off.
+fn config_stem(source_name: &str) -> &str {
+    source_name
         .rsplit(['/', '\\'])
         .next()
         .unwrap_or(source_name)
         .trim_end_matches(".yaml")
         .trim_end_matches(".yml")
         .trim_start_matches("config_qualtrics")
-        .trim_start_matches(['_', '-']);
+        .trim_start_matches(['_', '-'])
+}
+
+fn suggest_account_name(source_name: &str, data_center: &str) -> String {
+    let stem = config_stem(source_name);
     match (stem.is_empty(), data_center.is_empty()) {
         (false, _) => stem.to_uppercase(),
         (true, false) => data_center.to_string(),
         (true, true) => "Imported account".into(),
+    }
+}
+
+/// A profile name taken from the file it came from.
+///
+/// Several profiles can now live in one account, and a list of rows all reading
+/// "Imported project" tells the user nothing about which study is which.
+fn suggest_project_name(source_name: &str) -> String {
+    let stem = config_stem(source_name);
+    if stem.is_empty() {
+        "Imported project".into()
+    } else {
+        stem.replace(['_', '-'], " ")
     }
 }
 
@@ -407,6 +426,22 @@ project:
         assert_eq!(out.project.timezone, DEFAULT_TIMEZONE);
         assert_eq!(out.project.minutes_expire, DEFAULT_MINUTES_EXPIRE);
         assert_eq!(out.account.name, "VA");
+    }
+
+    // A profile added to an account that already has others has to be identifiable, and
+    // the file name is the only thing the config carries that names the study.
+    #[test]
+    fn profile_name_comes_from_the_file() {
+        let out = parse_config(VA, "config_qualtrics_ema_pilot.yaml").unwrap();
+        assert_eq!(out.project.name, "ema pilot");
+        // The account name still uppercases the same stem, separators and all.
+        assert_eq!(out.account.name, "EMA_PILOT");
+    }
+
+    #[test]
+    fn a_plain_config_name_falls_back_to_imported_project() {
+        let out = parse_config(UMN, "config_qualtrics.yaml").unwrap();
+        assert_eq!(out.project.name, "Imported project");
     }
 
     #[test]

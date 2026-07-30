@@ -133,6 +133,9 @@ export interface DistributionRow {
   id: string;
   contactLookupId: string;
   contactName: string;
+  /** Carried so the table can be searched by them; empty if the recipient was not resolved. */
+  contactPhone: string;
+  contactEmail: string;
   sendDate: string;
   /** Wall-clock time in the recipient's own timezone; empty when it is unknown. */
   sendLocal: string;
