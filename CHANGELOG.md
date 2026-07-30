@@ -2,7 +2,7 @@
 
 All notable changes to QualSched are documented in this file.
 
-## [Unreleased]
+## [0.1.6] - 2026-07-30
 
 ### Added
 - Import can add a survey profile to an account you already have, instead of
