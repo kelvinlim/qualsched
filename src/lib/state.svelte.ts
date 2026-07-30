@@ -7,7 +7,8 @@ export type ScreenName =
   | "contacts"
   | "schedule"
   | "distributions"
-  | "import";
+  | "import"
+  | "guide";
 
 /** The backend owns the config; this mirrors whatever it last returned. */
 class AppStore {

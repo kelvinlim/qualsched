@@ -2,6 +2,15 @@
 
 All notable changes to QualSched are documented in this file.
 
+## [0.1.7] - 2026-07-30
+
+### Added
+- A **User guide** entry at the bottom of the sidebar, showing the full user
+  guide inside the app. The guide is embedded into the app at build time, so it
+  works offline and in packaged builds; its table-of-contents links scroll
+  within the page, and it follows the system light/dark theme. Screenshots are
+  omitted until they are written.
+
 ## [0.1.6] - 2026-07-30
 
 ### Added

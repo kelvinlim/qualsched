@@ -466,3 +466,84 @@ progress {
   width: 100%;
   height: 0.6rem;
 }
+
+/* User guide prose: the guide renders GitHub-flavored markdown, so headings, tables
+   and code need document styling rather than the app's data-grid and eyebrow rules. */
+.guide {
+  max-width: 44rem;
+}
+.guide h1 {
+  margin-bottom: 0.75rem;
+}
+.guide h2 {
+  font-size: 1.15rem;
+  margin: 1.75rem 0 0.6rem;
+}
+.guide h3 {
+  font-size: 1rem;
+  margin: 1.25rem 0 0.4rem;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text);
+}
+.guide :is(h1, h2, h3, h4) {
+  scroll-margin-top: 0.75rem;
+}
+.guide a {
+  color: var(--accent);
+}
+.guide li {
+  line-height: 1.5;
+  margin-bottom: 0.25rem;
+}
+.guide code {
+  background: var(--accent-soft);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  font-size: 0.85em;
+}
+.guide pre {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 0.9rem;
+  overflow-x: auto;
+}
+.guide pre code {
+  background: none;
+  padding: 0;
+}
+.guide blockquote {
+  margin: 0 0 0.75rem;
+  padding: 0.1rem 0 0.1rem 0.9rem;
+  border-left: 3px solid var(--accent);
+  color: var(--muted);
+}
+.guide hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.75rem 0;
+}
+.guide table {
+  width: auto;
+  font-size: 0.9rem;
+}
+.guide th,
+.guide td {
+  white-space: normal;
+  vertical-align: top;
+}
+.guide th {
+  position: static;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: inherit;
+  color: var(--text);
+  background: none;
+}
+.guide tbody tr:hover {
+  background: none;
+}
+.guide img {
+  display: none;
+}

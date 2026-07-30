@@ -10,6 +10,7 @@
   import ScheduleScreen from "./screens/ScheduleScreen.svelte";
   import DistributionsScreen from "./screens/DistributionsScreen.svelte";
   import ImportWizard from "./screens/ImportWizard.svelte";
+  import GuideScreen from "./screens/GuideScreen.svelte";
 
   let loadError = $state("");
   // Read from the bundle rather than hardcoded, so it tracks tauri.conf.json.
@@ -29,6 +30,7 @@
     { screen: "schedule", label: "Schedule", needsProject: true },
     { screen: "distributions", label: "Distributions", needsProject: true },
     { screen: "import", label: "Import old config", needsProject: false },
+    { screen: "guide", label: "User guide", needsProject: false },
   ];
 </script>
 
@@ -94,6 +96,8 @@
       <DistributionsScreen />
     {:else if app.screen === "import"}
       <ImportWizard />
+    {:else if app.screen === "guide"}
+      <GuideScreen />
     {/if}
   </main>
 </div>
