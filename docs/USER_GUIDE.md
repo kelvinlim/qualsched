@@ -371,34 +371,6 @@ refuses to send two identical messages to the same person on the same day, so Qu
 appends a few random characters to keep them distinct. Participants see it; it is
 harmless.
 
-### Survey copies
-
-If your participants get more than one invitation a day, you need this card.
-
-Qualtrics delivers only the **first** invitation for a given survey to a given person each
-day. The later ones are not rejected — they are accepted, scheduled, and then quietly
-dropped, reporting zero sends. Making the messages different does not help; the limit is on
-the survey, not the wording.
-
-The way through is to send each administration of the day through a different survey. Press
-**Create N copies** and QualSched clones your survey in Qualtrics as many times as your time
-slots need, naming them after the original with `-c1`, `-c2` and so on. The first slot of
-each day then uses your original survey, the second uses `-c1`, the third `-c2`, and the
-pattern repeats every day.
-
-Three things to know:
-
-- The copies are **real surveys in your Qualtrics account**. Deleting the profile here does
-  not remove them.
-- **Responses arrive on whichever copy the participant answered.** When you export data, pull
-  it from the original *and* every copy, then merge — otherwise most of your day will look
-  like missing data.
-- **Editing the original later does not change the copies.** If you revise the questionnaire,
-  delete the copies in Qualtrics and create them again.
-
-If a profile has fewer copies than it has time slots, the extra slots are skipped when you
-compute a plan, and the Schedule screen tells you which ones and why.
-
 ### Email sender
 
 ![The email sender and scheduling defaults cards](images/06-profile-defaults.png)
@@ -556,6 +528,10 @@ The table has one row per invitation: who, what number or address, SMS or email,
 which slot, the local time in *their* time zone, the same moment in UTC, and when the link
 expires.
 
+A yellow banner above the table warns when the plan asks for more than one invitation a day
+— see [More than one invitation a day](#more-than-one-invitation-a-day) for what actually
+arrives.
+
 Underneath, two more cards appear when relevant:
 
 ![The skipped participants and dropped times cards](images/13-schedule-skipped.png)
@@ -696,6 +672,35 @@ Random windows are the point of EMA: a participant who knows the prompt comes at
 
 Hours must be 23 or below and minutes 59 or below, so `2400` and `870` are both rejected.
 The Survey profile screen checks as you type and will not let you save something invalid.
+
+## More than one invitation a day
+
+Qualtrics delivers only the **first** invitation for a given survey to a given person each
+day. If your time slots ask for four, the first arrives and the rest are accepted,
+scheduled, and then quietly dropped, reporting zero sends. Making the messages different
+does not help — the limit is on the survey, not the wording.
+
+QualSched books every slot you ask for and shows a yellow warning on the Schedule screen
+whenever a plan has more than one invitation a day, so you see this before you send rather
+than after. There is no way around the limit from inside QualSched. If your design needs
+several prompts a day, ask Qualtrics Support what your account's options are before you
+enrol participants.
+
+> **Upgrading from an earlier version?** A previous release tried to work around this by
+> cloning your survey into `-c1`, `-c2` and so on and sending each administration of the day
+> through a different clone. It did not hold up in practice, and this version neither creates
+> nor sends through clones.
+>
+> The clones already in your Qualtrics account are yours to keep or delete. Before deleting
+> any, open **Distributions**, load both **SMS** and **Email**, and cancel anything still
+> scheduled whose **Survey** column reads `c1`, `c2`, and so on — QualSched keeps listing
+> those so you can still cancel them, and once the survey is gone the invitations cannot be
+> withdrawn. Once nothing is pending, press **Forget these copies** on the Survey profile
+> screen to stop QualSched checking them.
+>
+> Responses that already arrived on a clone stay on that clone. When you export, pull from
+> the original *and* every `-c` survey and merge, or most of your day will look like missing
+> data.
 
 ## Time zones and daylight saving
 

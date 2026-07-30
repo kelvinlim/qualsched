@@ -431,6 +431,11 @@ dialog {
 dialog::backdrop {
   background: rgb(0 0 0 / 45%);
 }
+/* Bodies that append a warning separate it with a blank line; without this it would
+   collapse into one wall of text. Bodies with no newlines are unaffected. */
+dialog p {
+  white-space: pre-line;
+}
 
 progress {
   width: 100%;

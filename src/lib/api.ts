@@ -5,7 +5,6 @@ import type {
   Account,
   AppConfig,
   ContactView,
-  CopyReport,
   DeleteReport,
   DeleteTarget,
   DistributionRow,
@@ -19,7 +18,6 @@ import type {
   ScheduleProgress,
   SchedulePreview,
   SendReport,
-  SurveyCopyProgress,
   TestResult,
 } from "./types";
 
@@ -51,16 +49,9 @@ export const clearAccountToken = (accountId: string) =>
 export const testAccount = (accountId: string) =>
   invoke<TestResult>("test_account", { accountId });
 
-// --- survey copies --------------------------------------------------------
-
-/** Creates whatever copies the profile's time slots call for and it does not have yet. */
-export const createSurveyCopies = (accountId: string, projectId: string) =>
-  invoke<CopyReport>("create_survey_copies", { accountId, projectId });
-
-export const onSurveyCopyProgress = (
-  handler: (p: SurveyCopyProgress) => void,
-): Promise<UnlistenFn> =>
-  listen<SurveyCopyProgress>("surveys://progress", (e) => handler(e.payload));
+/** Drops the record of the clones 0.1.4 made; the surveys themselves stay in Qualtrics. */
+export const forgetSurveyCopies = (accountId: string, projectId: string) =>
+  invoke<AppConfig>("forget_survey_copies", { accountId, projectId });
 
 // --- lookups --------------------------------------------------------------
 
