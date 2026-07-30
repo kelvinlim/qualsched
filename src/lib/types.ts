@@ -24,7 +24,8 @@ export interface Project {
   minutesExpire: number;
   emailHeader: EmailHeader;
   embeddedDefaults: EmbeddedDefaults;
-  /** Managed clones of surveyId, in rotation order. Written only by createSurveyCopies. */
+  /** Clones of surveyId recorded by 0.1.4. Nothing writes these now; they are kept so their
+   * pending invitations stay cancellable, and cleared by forgetSurveyCopies. */
   surveyCopies: SurveyCopy[];
   copiesSourceSurveyId: string;
 }
@@ -92,7 +93,7 @@ export interface PlanItem {
   method: Method;
   dayIndex: number;
   slotLabel: string;
-  /** The survey this slot sends through: the profile's own, or one of its copies. */
+  /** The survey this item sends through — always the profile's own. */
   surveyId: string;
   surveyLabel: string;
   sendLocal: string;
@@ -110,6 +111,8 @@ export interface SchedulePreview {
   items: PlanItem[];
   skippedContacts: Skipped[];
   skippedSlots: Skipped[];
+  /** Things to tell the user before they approve the plan. */
+  warnings: string[];
 }
 
 export interface ItemFailure {
@@ -135,7 +138,7 @@ export interface DistributionRow {
   sendLocal: string;
   method: Method;
   unsent: boolean;
-  /** Needed to cancel the row: a copy's distribution can't be cancelled with the
+  /** Needed to cancel the row: a 0.1.4 clone's distribution can't be cancelled with the
    * profile's own survey id. */
   surveyId: string;
   surveyLabel: string;
@@ -145,19 +148,6 @@ export interface DistributionRow {
 export interface DeleteTarget {
   id: string;
   surveyId: string;
-}
-
-export interface CopyReport {
-  created: SurveyCopy[];
-  failed: { name: string; error: string }[];
-  config: AppConfig;
-}
-
-export interface SurveyCopyProgress {
-  done: number;
-  total: number;
-  name: string;
-  ok: boolean;
 }
 
 export interface RemovedContact {

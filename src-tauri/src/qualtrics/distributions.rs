@@ -7,7 +7,7 @@ use super::{
     models::{DistributionRow, Method},
 };
 use crate::config::{EmailHeader, Project};
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::scheduler::SurveyRef;
 
 pub const QUALTRICS_TIME_FMT: &str = "%Y-%m-%dT%H:%M:%SZ";
@@ -45,8 +45,8 @@ fn parse_send_date(raw: &str) -> Option<DateTime<Utc>> {
 
 pub struct SendRequest<'a> {
     pub project: &'a Project,
-    /// Which survey this invitation points at — the project's own, or one of its copies
-    /// when a later slot of the same day would otherwise be suppressed.
+    /// Which survey this invitation points at. Always the project's own since 0.1.5;
+    /// carried explicitly so the plan the user approved names it.
     pub survey_id: &'a str,
     pub contact_lookup_id: &'a str,
     pub message_text: &'a str,
@@ -109,18 +109,30 @@ fn distribution_id(resp: &Value) -> String {
         .to_string()
 }
 
-/// Lists a project's distributions across its survey and every copy of it, so the table
-/// shows a participant's whole day rather than only the slots that used the original.
+/// Lists a project's distributions across its own survey and any clone 0.1.4 left behind,
+/// so invitations already scheduled against a clone stay visible and cancellable.
 /// `now` decides which rows count as still cancellable.
+///
+/// A clone the user has since deleted in Qualtrics 404s. That must not take the rest of the
+/// table down with it — the whole screen would go empty, and contact deletion, which cancels
+/// pending rows first, would start failing. Only a missing clone is tolerated: a missing
+/// project survey is real news, and every other error kind (a bad token, a rate limit) still
+/// propagates rather than showing a silently short list. Not unit-tested; it needs a live
+/// client.
 pub async fn list_distributions(
     client: &QualtricsClient,
     project: &Project,
     method: Method,
     now: DateTime<Utc>,
 ) -> AppResult<Vec<DistributionRow>> {
+    let own_id = project.survey_id.trim();
     let mut rows = Vec::new();
     for survey in project.survey_rotation() {
-        rows.extend(list_for_survey(client, &project.mailing_list_id, &survey, method, now).await?);
+        match list_for_survey(client, &project.mailing_list_id, &survey, method, now).await {
+            Ok(found) => rows.extend(found),
+            Err(AppError::NotFound(_)) if survey.id != own_id => continue,
+            Err(e) => return Err(e),
+        }
     }
     Ok(rows)
 }

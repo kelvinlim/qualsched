@@ -1,6 +1,6 @@
 {
   "name": "qualsched",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Desktop GUI for scheduling Qualtrics survey distributions",
   "type": "module",
   "scripts": {

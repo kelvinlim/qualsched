@@ -72,8 +72,9 @@ pub async fn save_project(
                 .find(|a| a.id == account_id)
                 .ok_or_else(|| AppError::NotFound("that account no longer exists".into()))?;
             match account.projects.iter_mut().find(|p| p.id == project.id) {
-                // Survey copies are created by their own command; a form snapshot taken
-                // before that would otherwise erase the records and orphan real surveys.
+                // 0.1.4 recorded survey clones here. Nothing writes them any more, but the
+                // profile form never carried them either, so a save must not erase the
+                // records that keep those clones' pending invitations cancellable.
                 Some(existing) => {
                     project.survey_copies = std::mem::take(&mut existing.survey_copies);
                     project.copies_source_survey_id =
@@ -82,6 +83,35 @@ pub async fn save_project(
                 }
                 None => account.projects.push(project),
             }
+            Ok(())
+        })
+        .await
+}
+
+/// Drops the record of the clones 0.1.4 made for this profile.
+///
+/// The surveys themselves stay in Qualtrics — this only stops QualSched checking them, which
+/// costs an API call each every time the Distributions screen loads. Anything still pending
+/// on a forgotten clone can no longer be cancelled from here, so the UI confirms first.
+#[tauri::command]
+pub async fn forget_survey_copies(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    account_id: Uuid,
+    project_id: Uuid,
+) -> AppResult<AppConfig> {
+    state
+        .update_config(&app, |cfg| {
+            let project = cfg
+                .accounts
+                .iter_mut()
+                .find(|a| a.id == account_id)
+                .and_then(|a| a.projects.iter_mut().find(|p| p.id == project_id))
+                .ok_or_else(|| {
+                    AppError::NotFound("that account or project no longer exists".into())
+                })?;
+            project.survey_copies.clear();
+            project.copies_source_survey_id.clear();
             Ok(())
         })
         .await

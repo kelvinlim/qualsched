@@ -20,29 +20,15 @@ fn defaults() -> EligibilityDefaults<'static> {
     }
 }
 
-/// A rotation of `n` surveys: the original plus `n - 1` copies, as a profile with enough
-/// copies would produce. Leaked so it can sit in a `PlanInputs` without the caller
-/// having to keep a binding alive.
-fn surveys(n: usize) -> &'static [SurveyRef] {
-    let list: Vec<SurveyRef> = (0..n)
-        .map(|i| SurveyRef {
-            id: if i == 0 {
-                "SV_original".to_string()
-            } else {
-                format!("SV_copy{i}")
-            },
-            label: if i == 0 {
-                "original".to_string()
-            } else {
-                format!("c{i}")
-            },
-        })
-        .collect();
-    Box::leak(list.into_boxed_slice())
+/// The one survey a profile sends through, as `Project::own_survey` builds it.
+fn survey() -> &'static SurveyRef {
+    static SURVEY: std::sync::OnceLock<SurveyRef> = std::sync::OnceLock::new();
+    SURVEY.get_or_init(|| SurveyRef {
+        id: "SV_original".to_string(),
+        label: "original".to_string(),
+    })
 }
 
-/// Defaults to exactly enough surveys for the slots given, so tests that predate
-/// rotation keep their original shape.
 fn plan_inputs<'a>(slots: &'a [Slot], start: &'a str, num_days: i64) -> PlanInputs<'a> {
     PlanInputs {
         contact_id: "CID_1",
@@ -50,7 +36,7 @@ fn plan_inputs<'a>(slots: &'a [Slot], start: &'a str, num_days: i64) -> PlanInpu
         destination: "+15555550100",
         method: Method::Sms,
         slots,
-        surveys: surveys(slots.len()),
+        survey: survey(),
         num_days,
         start_date: start,
         timezone: "America/Chicago",
@@ -213,86 +199,64 @@ fn expands_days_times_slots() {
     assert_eq!(items.iter().filter(|i| i.day_index == 3).count(), 3);
 }
 
-// Qualtrics drops a second invitation for the same survey to the same contact on the
-// same day, so each slot of a day has to name a different survey.
+// 0.1.4 sent slot k of each day through copy k of the survey. That did not work, and slot
+// position must never pick a survey again: every item names the profile's own survey.
 #[test]
-fn each_slot_of_a_day_uses_its_own_survey_and_repeats_across_days() {
+fn every_slot_of_a_day_sends_through_the_profile_survey() {
     let slots = [Slot::Fixed(800), Slot::Fixed(1200), Slot::Fixed(2000)];
     let now = Utc.with_ymd_and_hms(2026, 6, 1, 0, 0, 0).unwrap();
     let (items, skipped) =
         build_contact_plan(&plan_inputs(&slots, "2026-07-01", 4), now, &mut rng());
 
+    assert_eq!(items.len(), 12);
     assert!(skipped.is_empty());
-    for day in 0..4 {
-        let labels: Vec<&str> = items
-            .iter()
-            .filter(|i| i.day_index == day)
-            .map(|i| i.survey_label.as_str())
-            .collect();
-        assert_eq!(
-            labels,
-            ["original", "c1", "c2"],
-            "day {day} should walk the rotation in slot order"
-        );
-    }
-    let day0: Vec<&str> = items
+    assert!(items
         .iter()
-        .filter(|i| i.day_index == 0)
-        .map(|i| i.survey_id.as_str())
-        .collect();
-    assert_eq!(day0.len(), day0.iter().collect::<std::collections::HashSet<_>>().len());
+        .all(|i| i.survey_id == "SV_original" && i.survey_label == "original"));
 }
 
+// 0.1.4 dropped every slot with no copy behind it, so a four-a-day profile with no copies
+// scheduled one invitation a day. The whole plan is booked again.
 #[test]
-fn slots_past_the_end_of_the_rotation_are_skipped_not_reused() {
+fn more_slots_a_day_than_the_profile_has_copies_are_still_scheduled() {
     let slots = [
         Slot::Fixed(800),
         Slot::Fixed(1200),
         Slot::Fixed(1600),
         Slot::Fixed(2000),
     ];
-    let mut input = plan_inputs(&slots, "2026-07-01", 2);
-    input.surveys = surveys(2); // original + c1, for four slots a day
     let now = Utc.with_ymd_and_hms(2026, 6, 1, 0, 0, 0).unwrap();
-    let (items, skipped) = build_contact_plan(&input, now, &mut rng());
+    let (items, skipped) =
+        build_contact_plan(&plan_inputs(&slots, "2026-07-01", 2), now, &mut rng());
 
-    assert_eq!(items.len(), 4, "two sendable slots on each of two days");
-    assert_eq!(skipped.len(), 4);
-    assert!(skipped
-        .iter()
-        .all(|s| s.reason.contains("no survey to send through")));
-    assert!(items
-        .iter()
-        .all(|i| i.survey_label == "original" || i.survey_label == "c1"));
+    assert_eq!(items.len(), 8, "four slots on each of two days");
+    assert!(skipped.is_empty());
 }
 
-// A dropped early slot must not slide the later slots onto the wrong survey.
+// The wrapped send belongs to day 0 but lands on the next calendar date.
 #[test]
-fn dropping_a_past_slot_leaves_the_rotation_in_place() {
-    let slots = [Slot::Fixed(800), Slot::Fixed(2000)];
-    let now = Utc.with_ymd_and_hms(2026, 7, 15, 18, 0, 0).unwrap(); // 13:00 CDT on day 0
-    let (items, _) = build_contact_plan(&plan_inputs(&slots, "2026-07-15", 2), now, &mut rng());
-
-    let day0: Vec<&str> = items
-        .iter()
-        .filter(|i| i.day_index == 0)
-        .map(|i| i.survey_label.as_str())
-        .collect();
-    assert_eq!(day0, ["c1"], "the surviving 20:00 slot keeps slot 2's survey");
-}
-
-// The wrapped send lands on the next calendar day but keeps its slot's survey.
-#[test]
-fn a_midnight_crossing_window_keeps_its_positional_survey() {
-    let slots = [Slot::Window(2350, 10), Slot::Fixed(800)];
+fn a_midnight_crossing_window_sends_on_the_next_date() {
+    let slots = [Slot::Window(2350, 10)];
     let now = Utc.with_ymd_and_hms(2026, 6, 1, 0, 0, 0).unwrap();
     let (items, _) = build_contact_plan(&plan_inputs(&slots, "2026-07-01", 1), now, &mut rng());
 
-    let wrapped = items
-        .iter()
-        .find(|i| i.slot_label.starts_with('['))
-        .expect("the window slot should produce an item");
-    assert_eq!(wrapped.survey_label, "original");
+    let wrapped = items.first().expect("the window slot should produce an item");
+    assert_eq!(wrapped.day_index, 0);
+    // 23:50–00:10 resolves either side of midnight; both dates are legitimate.
+    assert!(
+        wrapped.send_local.starts_with("2026-07-01") || wrapped.send_local.starts_with("2026-07-02"),
+        "unexpected send date {}",
+        wrapped.send_local
+    );
+}
+
+#[test]
+fn the_one_a_day_warning_fires_only_for_multi_slot_plans() {
+    assert!(multi_administration_warning(0).is_none());
+    assert!(multi_administration_warning(1).is_none());
+    let warning = multi_administration_warning(4).expect("four a day should warn");
+    assert!(warning.contains('4'));
+    assert!(warning.contains("first invitation"));
 }
 
 #[test]

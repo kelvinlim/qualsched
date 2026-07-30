@@ -100,22 +100,6 @@ impl QualtricsClient {
         self.send(self.http.post(self.url(path)).json(body)).await
     }
 
-    /// POST with extra request headers, for endpoints that take their directives there
-    /// rather than in the body — the copy-survey call names both its source and the
-    /// owner of the copy that way.
-    pub async fn post_with_headers(
-        &self,
-        path: &str,
-        headers: &[(&str, &str)],
-        body: &Value,
-    ) -> AppResult<Value> {
-        let mut req = self.http.post(self.url(path));
-        for (name, value) in headers {
-            req = req.header(*name, *value);
-        }
-        self.send(req.json(body)).await
-    }
-
     pub async fn put(&self, path: &str, body: &Value) -> AppResult<Value> {
         self.send(self.http.put(self.url(path)).json(body)).await
     }
@@ -177,30 +161,6 @@ mod tests {
             let values: Vec<_> = built.headers().get_all(CONTENT_TYPE).iter().collect();
             assert_eq!(values, vec!["application/json"]);
         }
-    }
-
-    // Copying a survey names its source and the copy's owner in headers, which must not
-    // disturb the single-Content-Type rule above.
-    #[test]
-    fn extra_headers_ride_alongside_one_content_type() {
-        let c = client();
-        let built = c
-            .prepare(
-                c.http
-                    .post(c.url("surveys"))
-                    .header("X-COPY-SOURCE", "SV_1")
-                    .header("X-COPY-DESTINATION-OWNER", "UR_1")
-                    .json(&json!({"projectName": "Study-c1"})),
-            )
-            .build()
-            .unwrap();
-        let values: Vec<_> = built.headers().get_all(CONTENT_TYPE).iter().collect();
-        assert_eq!(values, vec!["application/json"]);
-        assert_eq!(built.headers().get("X-COPY-SOURCE").unwrap(), "SV_1");
-        assert_eq!(
-            built.headers().get("X-COPY-DESTINATION-OWNER").unwrap(),
-            "UR_1"
-        );
     }
 
     #[test]

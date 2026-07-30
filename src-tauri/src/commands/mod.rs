@@ -4,7 +4,6 @@ pub mod distribution_cmds;
 pub mod import_cmds;
 pub mod lookup_cmds;
 pub mod schedule_cmds;
-pub mod survey_cmds;
 
 use uuid::Uuid;
 

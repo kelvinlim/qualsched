@@ -73,20 +73,23 @@ pub struct Project {
     pub email_header: EmailHeader,
     #[serde(default)]
     pub embedded_defaults: EmbeddedDefaults,
-    /// Copies of `survey_id`, in rotation order. Owned by `create_survey_copies`; the
-    /// profile form never writes them, so `save_project` carries them across a save.
+    /// Clones of `survey_id` recorded by 0.1.4. Nothing writes these any more, but they are
+    /// kept so the invitations already scheduled against them stay listable and cancellable;
+    /// the profile form never carried them either, so `save_project` must carry them across
+    /// a save.
     #[serde(default)]
     pub survey_copies: Vec<SurveyCopy>,
-    /// The survey the copies were made from, so the UI can warn when `survey_id` later
-    /// changes out from under an existing copy set.
+    /// The survey those clones were made from.
     #[serde(default)]
     pub copies_source_survey_id: String,
 }
 
-/// One managed clone of a project's survey, named `<original>-c1`, `-c2`, ...
+/// One clone of a project's survey, named `<original>-c1`, `-c2`, ...
 ///
-/// Qualtrics silently drops a second invitation for the same survey to the same contact
-/// within a day, so each administration of the day has to name a different survey.
+/// 0.1.4 created these to work around Qualtrics dropping a second invitation for the same
+/// survey to the same contact within a day, and sent each administration of the day through
+/// a different one. That did not hold up in the field, so 0.1.5 neither creates nor sends
+/// through them — the records only survive to keep their pending invitations cancellable.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SurveyCopy {
@@ -108,26 +111,33 @@ impl Project {
         self.embedded_defaults.expire_minutes = self.minutes_expire as i64;
     }
 
-    /// The surveys a day's slots rotate through: the original first, then each copy.
-    ///
-    /// Slot `k` of every day sends on element `k`, so a contact never receives two
-    /// invitations for the same survey on the same day. Slots past the end of this list
-    /// are skipped rather than reusing a survey — see `scheduler::build_contact_plan`.
-    pub fn survey_rotation(&self) -> Vec<crate::scheduler::SurveyRef> {
-        std::iter::once(crate::scheduler::SurveyRef {
+    /// The survey every invitation is sent through. Since 0.1.5 there is exactly one, and
+    /// all of a day's slots use it.
+    pub fn own_survey(&self) -> crate::scheduler::SurveyRef {
+        crate::scheduler::SurveyRef {
             id: self.survey_id.clone(),
             label: "original".to_string(),
-        })
-        .chain(
-            self.survey_copies
-                .iter()
-                .enumerate()
-                .map(|(i, c)| crate::scheduler::SurveyRef {
-                    id: c.id.clone(),
-                    label: format!("c{}", i + 1),
-                }),
-        )
-        .collect()
+        }
+    }
+
+    /// Every survey this profile may own distributions on: its own, plus any clone 0.1.4
+    /// created for it.
+    ///
+    /// Used only to list and cancel distributions — a clone's invitation cannot be cancelled
+    /// against the original's survey id. Scheduling has sent every slot through
+    /// `own_survey` since 0.1.5.
+    pub fn survey_rotation(&self) -> Vec<crate::scheduler::SurveyRef> {
+        std::iter::once(self.own_survey())
+            .chain(
+                self.survey_copies
+                    .iter()
+                    .enumerate()
+                    .map(|(i, c)| crate::scheduler::SurveyRef {
+                        id: c.id.clone(),
+                        label: format!("c{}", i + 1),
+                    }),
+            )
+            .collect()
     }
 }
 
@@ -248,8 +258,9 @@ mod tests {
         assert_eq!(p.copies_source_survey_id, "");
     }
 
+    // Listing and cancellation still have to reach a 0.1.4 clone; only scheduling stopped.
     #[test]
-    fn rotation_puts_the_original_first_then_copies_in_order() {
+    fn distribution_surveys_span_the_profile_survey_and_leftover_copies() {
         let mut p = project();
         p.survey_id = "SV_orig".into();
         p.survey_copies = vec![
@@ -263,6 +274,32 @@ mod tests {
         let labels: Vec<&str> = rotation.iter().map(|s| s.label.as_str()).collect();
         assert_eq!(ids, ["SV_orig", "SV_a", "SV_b"]);
         assert_eq!(labels, ["original", "c1", "c2"]);
+        // Sending, unlike listing, never leaves the profile's own survey.
+        assert_eq!(p.own_survey().id, "SV_orig");
+    }
+
+    // A config written by 0.1.4 must keep its clone records through the upgrade, or the
+    // invitations already scheduled against them become uncancellable.
+    #[test]
+    fn a_project_with_copies_from_0_1_4_keeps_them() {
+        let json = r#"{
+            "id": "0e6f9a1c-1f8e-4a3e-9f7a-2b3c4d5e6f70",
+            "name": "Study",
+            "surveyId": "SV_orig",
+            "messageId": "MS_1",
+            "mailingListId": "CG_1",
+            "copiesSourceSurveyId": "SV_orig",
+            "surveyCopies": [
+                { "id": "SV_a", "name": "Study-c1" },
+                { "id": "SV_b", "name": "Study-c2" }
+            ]
+        }"#;
+        let p: Project = serde_json::from_str(json).expect("a 0.1.4 project should load");
+
+        assert_eq!(p.copies_source_survey_id, "SV_orig");
+        let rotation = p.survey_rotation();
+        let ids: Vec<&str> = rotation.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(ids, ["SV_orig", "SV_a", "SV_b"]);
     }
 
     // The profile screen shows one box per value; the seed must follow it. When it did

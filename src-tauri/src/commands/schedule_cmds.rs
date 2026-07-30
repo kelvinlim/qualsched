@@ -18,8 +18,8 @@ use crate::qualtrics::{
     QualtricsClient,
 };
 use crate::scheduler::{
-    build_contact_plan, contact_eligibility, decorate_message, Eligibility, EligibilityDefaults,
-    Method, PlanInputs, PlanItem, Skipped,
+    build_contact_plan, contact_eligibility, decorate_message, multi_administration_warning,
+    Eligibility, EligibilityDefaults, Method, PlanInputs, PlanItem, Skipped,
 };
 use crate::state::AppState;
 
@@ -33,6 +33,10 @@ pub struct SchedulePreview {
     pub skipped_contacts: Vec<Skipped>,
     /// Individual slots dropped from otherwise-eligible contacts (usually already past).
     pub skipped_slots: Vec<Skipped>,
+    /// Things the user should know before approving, phrased for them. Defaulted because
+    /// `execute_schedule` takes this struct straight back and does not read the field.
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -93,9 +97,10 @@ pub async fn preview_schedule(
     let mut items = Vec::new();
     let mut skipped_contacts = Vec::new();
     let mut skipped_slots = Vec::new();
-    // Slot k of each day sends through rotation[k], so a participant never gets two
-    // invitations for the same survey in one day.
-    let rotation = project.survey_rotation();
+    let survey = project.own_survey();
+    // Drives the one-a-day warning. Taken from the slots a contact asks for rather than the
+    // items it produced, so a contact whose first day is half past still counts in full.
+    let mut max_slots_per_day = 0usize;
 
     for contact in &raw {
         let name = display_name(contact);
@@ -142,7 +147,7 @@ pub async fn preview_schedule(
                     destination: &destination,
                     method,
                     slots: &slots,
-                    surveys: &rotation,
+                    survey: &survey,
                     num_days,
                     start_date: &start_date,
                     timezone: &timezone,
@@ -163,6 +168,7 @@ pub async fn preview_schedule(
                     });
                     continue;
                 }
+                max_slots_per_day = max_slots_per_day.max(slots.len());
                 items.append(&mut plan);
                 skipped_slots.extend(dropped);
             }
@@ -174,6 +180,9 @@ pub async fn preview_schedule(
         items,
         skipped_contacts,
         skipped_slots,
+        warnings: multi_administration_warning(max_slots_per_day)
+            .into_iter()
+            .collect(),
     })
 }
 
@@ -200,6 +209,13 @@ pub async fn execute_schedule(
             "this project has no SMS message selected".into(),
         ));
     }
+    // Without this the run POSTs `"surveyId": ""` for every item.
+    let survey_id = project.survey_id.trim();
+    if survey_id.is_empty() {
+        return Err(AppError::Invalid(
+            "this project has no survey selected".into(),
+        ));
+    }
     let client = state.client(account_id).await?;
 
     let raw = contacts::list_contacts(
@@ -223,7 +239,6 @@ pub async fn execute_schedule(
 
     let now = Utc::now();
     let mut rng = StdRng::from_entropy();
-    let rotation = project.survey_rotation();
 
     for item in &plan.items {
         done += 1;
@@ -255,13 +270,15 @@ pub async fn execute_schedule(
             continue;
         };
 
-        // The profile's survey or its copies may have changed since the preview.
-        if !rotation.iter().any(|s| s.id == item.survey_id) {
+        // The profile's survey may have changed since the preview. A plan left over from
+        // 0.1.4 naming one of that release's clones lands here too, and is rejected for the
+        // same reason: nothing should send through a clone again.
+        if item.survey_id != survey_id {
             failed.push(fail(
                 format!(
-                    "this plan sends through survey {}, which is no longer part of the \
-                     profile; re-run the preview",
-                    item.survey_id
+                    "this plan sends through survey {}, but the profile now sends through \
+                     {}; re-run the preview",
+                    item.survey_id, survey_id
                 ),
                 false,
             ));
