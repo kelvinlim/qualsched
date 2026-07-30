@@ -2,6 +2,30 @@
 
 All notable changes to QualSched are documented in this file.
 
+## [0.1.5] - 2026-07-30
+
+### Changed
+- Survey copies are no longer created or sent through. The 0.1.4 workaround for
+  Qualtrics' one-invitation-a-day limit did not work in the field, so every slot
+  of the day is booked against the profile's own survey again.
+- A plan with more than one invitation a day now carries a warning on the
+  Schedule screen and in the send confirmation, stating what Qualtrics will
+  actually deliver.
+
+### Fixed
+- A profile with more time slots a day than it had survey copies scheduled only
+  one invitation a day under 0.1.4; the whole plan is booked again.
+- Sending with no survey selected POSTed an empty survey id instead of stopping.
+- Distribution listing survives a survey copy the user has deleted in Qualtrics.
+  One such copy previously emptied the whole Distributions screen and broke
+  participant removal, which cancels pending invitations first.
+
+### Notes for upgraders
+- Copies created by 0.1.4 stay recorded so their pending invitations remain
+  cancellable, and appear on the profile screen as "Leftover survey copies" with
+  a **Forget these copies** button. Cancel anything still scheduled against them
+  before deleting those surveys in Qualtrics.
+
 ## [0.1.4] - 2026-07-29
 
 ### Added
