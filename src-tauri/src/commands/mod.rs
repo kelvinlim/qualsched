@@ -5,6 +5,7 @@ pub mod export_cmds;
 pub mod import_cmds;
 pub mod lookup_cmds;
 pub mod schedule_cmds;
+pub mod update_cmds;
 
 use uuid::Uuid;
 

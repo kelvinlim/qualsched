@@ -25,8 +25,8 @@
   function onClick(event: MouseEvent) {
     const link = (event.target as HTMLElement).closest("a");
     if (!link) return;
-    // Never let the webview navigate away — there is no opener plugin, and any
-    // real navigation would replace the app UI.
+    // Never let the webview navigate away: real navigation would replace the app
+    // UI. Only in-page anchors are followed; external links are ignored here.
     event.preventDefault();
     const href = link.getAttribute("href") ?? "";
     if (href.startsWith("#")) {
