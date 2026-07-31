@@ -1,6 +1,7 @@
 pub mod config_cmds;
 pub mod contact_cmds;
 pub mod distribution_cmds;
+pub mod export_cmds;
 pub mod import_cmds;
 pub mod lookup_cmds;
 pub mod schedule_cmds;

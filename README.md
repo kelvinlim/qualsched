@@ -34,8 +34,13 @@ Screens, in the order you use them:
    times, then sends after you confirm.
 5. **Distributions** — invitations already booked, searchable the same way, with
    cancellation for anything still in the future.
-6. **Import old config** — reads a `config_qualtrics*.yaml` from the CLI and turns it
-   into a survey profile, either in a new account or in one you already have.
+6. **Import Config** — reads a `config_qualtrics*.yaml` from the CLI, or one this app
+   exported, and turns it into a survey profile, either in a new account or in one you
+   already have.
+7. **Export Config** — writes the selected survey profile back out as a
+   `config_qualtrics*.yaml` for another machine to import, or for the CLI to read. The
+   API token is never included; it stays in the OS credential store.
+8. **User guide** — the full guide, embedded in the app and readable offline.
 
 Step-by-step instructions for each screen, written for study coordinators, are in the
 [User Guide](docs/USER_GUIDE.md).
@@ -148,7 +153,7 @@ src-tauri/src/
   scheduler/            all scheduling rules — pure, no IO, fully unit-tested
   commands/             the Tauri command surface the frontend calls
   config/, keychain.rs  settings persistence and token storage
-  import.rs             legacy YAML reader
+  import.rs             legacy YAML reader and writer
 ```
 
 All Qualtrics API calls happen in Rust; the webview never sees the API token.

@@ -10,6 +10,7 @@
   import ScheduleScreen from "./screens/ScheduleScreen.svelte";
   import DistributionsScreen from "./screens/DistributionsScreen.svelte";
   import ImportWizard from "./screens/ImportWizard.svelte";
+  import ExportScreen from "./screens/ExportScreen.svelte";
   import GuideScreen from "./screens/GuideScreen.svelte";
 
   let loadError = $state("");
@@ -23,14 +24,62 @@
       .catch(() => (version = ""));
   });
 
-  const nav: { screen: ScreenName; label: string; needsProject: boolean }[] = [
-    { screen: "accounts", label: "Accounts", needsProject: false },
-    { screen: "project", label: "Survey profile", needsProject: false },
-    { screen: "contacts", label: "Contacts", needsProject: true },
-    { screen: "schedule", label: "Schedule", needsProject: true },
-    { screen: "distributions", label: "Distributions", needsProject: true },
-    { screen: "import", label: "Import old config", needsProject: false },
-    { screen: "guide", label: "User guide", needsProject: false },
+  // `hint` becomes the hover text, and on a greyed-out item it also says what is
+  // missing — otherwise a disabled button explains nothing.
+  const nav: {
+    screen: ScreenName;
+    label: string;
+    needsProject: boolean;
+    hint: string;
+  }[] = [
+    {
+      screen: "accounts",
+      label: "Accounts",
+      needsProject: false,
+      hint: "One per Qualtrics login: API token, data center, contact directory, message library",
+    },
+    {
+      screen: "project",
+      label: "Survey profile",
+      needsProject: false,
+      hint: "One per study: survey, mailing list, message templates, default schedule",
+    },
+    {
+      screen: "contacts",
+      label: "Contacts",
+      needsProject: true,
+      hint: "Your participants and each one's schedule",
+    },
+    {
+      screen: "schedule",
+      label: "Schedule",
+      needsProject: true,
+      hint: "Work out the invitations, review them, then send",
+    },
+    {
+      screen: "distributions",
+      label: "Distributions",
+      needsProject: true,
+      hint: "Invitations already booked with Qualtrics, and cancelling them",
+    },
+    {
+      screen: "import",
+      label: "Import Config",
+      needsProject: false,
+      hint: "Read a settings file from the old command-line tool, or one exported here",
+    },
+    {
+      screen: "export",
+      label: "Export Config",
+      needsProject: true,
+      hint: "Save this survey profile as a file another computer can import",
+    },
+    {
+      screen: "guide",
+      label: "User guide",
+      needsProject: false,
+      hint: "The full guide to setting up and running a study",
+    },
   ];
 </script>
 
@@ -45,6 +94,9 @@
         class="nav"
         class:active={app.screen === item.screen}
         disabled={item.needsProject && !app.hasProject}
+        title={item.needsProject && !app.hasProject
+          ? `${item.hint} — choose an account and a survey profile first`
+          : item.hint}
         onclick={() => app.go(item.screen)}
       >
         {item.label}
@@ -96,6 +148,8 @@
       <DistributionsScreen />
     {:else if app.screen === "import"}
       <ImportWizard />
+    {:else if app.screen === "export"}
+      <ExportScreen />
     {:else if app.screen === "guide"}
       <GuideScreen />
     {/if}

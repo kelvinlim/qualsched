@@ -8,6 +8,7 @@ export type ScreenName =
   | "schedule"
   | "distributions"
   | "import"
+  | "export"
   | "guide";
 
 /** The backend owns the config; this mirrors whatever it last returned. */

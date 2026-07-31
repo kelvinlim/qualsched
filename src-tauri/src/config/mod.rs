@@ -142,7 +142,7 @@ impl Project {
 }
 
 /// Was hardcoded in qualtrics_util.send_email; now per-project.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EmailHeader {
     pub from_email: String,
@@ -164,7 +164,7 @@ impl Default for EmailHeader {
 
 /// Seed values written onto a contact's embedded data when a field is absent.
 /// Field names mirror the Qualtrics embedded-data keys exactly.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EmbeddedDefaults {
     pub start_date: String,

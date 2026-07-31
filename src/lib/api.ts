@@ -184,3 +184,12 @@ export const confirmLegacyImport = (request: {
    * token are left untouched and the file's account block is discarded. */
   targetAccountId?: string;
 }) => invoke<AppConfig>("confirm_legacy_import", { request });
+
+// --- export ---------------------------------------------------------------
+
+/** Writes the profile to `path` as a config_qualtrics YAML. The token is never in it. */
+export const exportProjectConfig = (
+  accountId: string,
+  projectId: string,
+  path: string,
+) => invoke<void>("export_project_config", { accountId, projectId, path });

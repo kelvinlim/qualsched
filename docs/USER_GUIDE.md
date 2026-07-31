@@ -131,9 +131,9 @@ You enter it once per account, on the Accounts screen.
 ## What the window looks like
 
 ![The QualSched window on first launch, with an empty sidebar](images/01-first-launch.png)
-*The six screens down the left. Three of them are greyed out until you have set up an account and a survey profile.*
+*The eight screens down the left. Four of them are greyed out until you have set up an account and a survey profile.*
 
-Down the left are six screens, in the order you use them:
+Down the left are eight screens, in the order you use them:
 
 | Screen | What it is for |
 | --- | --- |
@@ -142,10 +142,14 @@ Down the left are six screens, in the order you use them:
 | **Contacts** | Your participants and each one's schedule |
 | **Schedule** | Work out the invitations, review them, send |
 | **Distributions** | Invitations already booked, and cancelling them |
-| **Import old config** | Read a settings file from the old command-line tool |
+| **Import Config** | Read a settings file from the old command-line tool, or one exported here |
+| **Export Config** | Save the selected survey profile as a file another computer can read |
+| **User guide** | This guide, readable inside the app |
 
-**Contacts, Schedule and Distributions stay greyed out** until you have both an account
-and a survey profile selected. That is the whole purpose of setup.
+Hovering over any of them shows a one-line reminder of what it does.
+
+**Contacts, Schedule, Distributions and Export Config stay greyed out** until you have
+both an account and a survey profile selected. That is the whole purpose of setup.
 
 At the top of every screen, QualSched shows which account and profile you are working in —
 for example **VA / Sleep study**. Check it before doing anything irreversible; it is the
@@ -185,7 +189,7 @@ Skip whichever path you did not choose. Both finish in the same place,
 
 ## A1. Open the import screen
 
-Click **Import old config** in the sidebar. Nothing you do on this screen changes anything
+Click **Import Config** in the sidebar. Nothing you do on this screen changes anything
 until you press Import at the end, so it is safe to look around.
 
 You will want two files, though only the first is required:
@@ -423,8 +427,8 @@ You now have an account and a survey profile. Continue at
 
 # You're set up
 
-Both paths end here. Contacts, Schedule and Distributions are no longer greyed out, and
-the bottom-left corner shows your account and profile.
+Both paths end here. Contacts, Schedule, Distributions and Export Config are no longer
+greyed out, and the breadcrumb at the top shows your account and profile.
 
 ## Three things to check before your first send
 
@@ -654,7 +658,23 @@ Distributions if you want the new pattern to apply.
 ### Switch between studies or accounts
 
 Pick a different profile in the list on the **Survey profile** screen, or a different
-account on the **Accounts** screen. The bottom-left corner always shows where you are.
+account on the **Accounts** screen. The breadcrumb at the top always shows where you are.
+
+### Move a study to another computer
+
+1. **Export Config** → **Save as…**, and keep the file it writes.
+2. On the other computer, **Import Config** → choose that file → **Read config** →
+   **Import**.
+3. Enter the API token there. **The token is never written to the file**, so whoever
+   imports it uses their own — see [Getting your API token](#getting-your-api-token).
+
+What travels is the study's settings: survey, mailing list, templates, time slots,
+time zone and email sender. What does not is your token, your participants, and their
+schedules — those live in Qualtrics, and both computers see the same ones as soon as the
+account is connected.
+
+The file is the same format the old command-line tool used, so it can be read by the tool
+as well, and a file from the tool can be imported here.
 
 ---
 
@@ -858,7 +878,7 @@ window or to the named card — no desktop, no other windows.
 
 | File | What to capture |
 | --- | --- |
-| `01-first-launch.png` | The app with no account at all. Contacts, Schedule and Distributions greyed out; the breadcrumb at the top reads "Choose an account" |
+| `01-first-launch.png` | The app with no account at all. Contacts, Schedule, Distributions and Export Config greyed out; the breadcrumb at the top reads "Choose an account" |
 | `02-import-choose-files.png` | Import screen, "1. Choose the files" card, both paths filled in, before pressing Read config |
 | `03-import-review.png` | Import screen, "2. Check what was found" — the "Import into" dropdown on "Create a new account", the editable boxes, the whole read-only table, and the warnings banner with 3+ warnings, all in one tall shot |
 | `04-accounts-connected.png` | Accounts screen: Connection card, Directory and library card, the button row, and the green "Connected. N directories visible." banner. Token field showing "Stored — type a new one to replace it" |

@@ -2,6 +2,23 @@
 
 All notable changes to QualSched are documented in this file.
 
+## [0.1.8] - 2026-07-31
+
+### Added
+- **Export Config**, a new sidebar screen: saves the selected survey profile as a
+  `config_qualtrics` YAML that another computer can import and the old command-line
+  tool can still read. Your API token is never written to it — it stays in the
+  credential store of the machine it was entered on.
+- Exported files carry the profile name and the email sender details, both of which
+  the format previously had no room for, and Import Config reads both back. A file
+  from the command-line tool behaves exactly as before.
+- Hovering a sidebar item now describes what the screen is for; a greyed-out item
+  also says what is missing.
+
+### Changed
+- The sidebar item "Import old config" is now **Import Config**, since it reads
+  files this app writes as well as the old tool's.
+
 ## [0.1.7] - 2026-07-30
 
 ### Added

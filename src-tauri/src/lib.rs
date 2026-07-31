@@ -56,6 +56,7 @@ pub fn run() {
             commands::distribution_cmds::delete_unsent_for_contact,
             commands::import_cmds::preview_legacy_import,
             commands::import_cmds::confirm_legacy_import,
+            commands::export_cmds::export_project_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running QualSched");
