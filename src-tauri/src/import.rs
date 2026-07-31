@@ -77,6 +77,25 @@ pub fn parse_config(yaml_text: &str, source_name: &str) -> AppResult<Imported> {
         }
     }
 
+    // QualSched's own exports carry the sender fields the CLI hardcoded; a file from the
+    // CLI has no such section and still starts from the defaults.
+    let email_section = root.get("email_header");
+    let mut email_header = EmailHeader::default();
+    if email_section.is_some() {
+        if let Some(v) = str_at(email_section, "FROM_EMAIL") {
+            email_header.from_email = v;
+        }
+        if let Some(v) = str_at(email_section, "FROM_NAME") {
+            email_header.from_name = v;
+        }
+        if let Some(v) = str_at(email_section, "REPLY_TO_EMAIL") {
+            email_header.reply_to_email = v;
+        }
+        if let Some(v) = str_at(email_section, "SUBJECT") {
+            email_header.subject = v;
+        }
+    }
+
     let account = Account {
         id: Uuid::new_v4(),
         name: suggest_account_name(source_name, &data_center),
@@ -89,16 +108,16 @@ pub fn parse_config(yaml_text: &str, source_name: &str) -> AppResult<Imported> {
 
     let project = Project {
         id: Uuid::new_v4(),
-        name: suggest_project_name(source_name),
+        // A file this app wrote names the profile outright; a CLI file has only its
+        // filename to go on.
+        name: str_at(project_section, "NAME").unwrap_or_else(|| suggest_project_name(source_name)),
         survey_id: str_at(project_section, "SURVEY_ID").unwrap_or_default(),
         message_id: str_at(project_section, "MESSAGE_ID").unwrap_or_default(),
         message_id_email,
         mailing_list_id: str_at(project_section, "MAILING_LIST_ID").unwrap_or_default(),
         timezone,
         minutes_expire,
-        // The CLI hardcoded these in send_email; they are settings now, so start from
-        // the defaults and let the user correct them.
-        email_header: EmailHeader::default(),
+        email_header,
         embedded_defaults,
         // Copies are created on demand from the profile screen, never by an import.
         survey_copies: Vec::new(),
@@ -112,17 +131,152 @@ pub fn parse_config(yaml_text: &str, source_name: &str) -> AppResult<Imported> {
                 .into(),
         );
     }
-    warnings.push(
-        "Email sender details (from address, name, subject) were hardcoded in the CLI. \
-         Review them in the project editor before sending email."
-            .into(),
-    );
+    if email_section.is_none() {
+        warnings.push(
+            "Email sender details (from address, name, subject) were hardcoded in the CLI. \
+             Review them in the project editor before sending email."
+                .into(),
+        );
+    }
 
     Ok(Imported {
         account,
         project,
         warnings,
     })
+}
+
+/// The CLI's YAML dialect, written back out. Field order is the order it appears in the
+/// file, and the rename attributes are the file's own key names.
+///
+/// Typed fields rather than a `Mapping` built from `as_pairs`, so numbers and booleans
+/// serialize as themselves instead of as quoted strings.
+#[derive(serde::Serialize)]
+struct LegacyFile<'a> {
+    account: LegacyAccount<'a>,
+    project: LegacyProject<'a>,
+    embedded_data: LegacyEmbedded<'a>,
+    email_header: LegacyEmailHeader<'a>,
+}
+
+#[derive(serde::Serialize)]
+struct LegacyAccount<'a> {
+    #[serde(rename = "DATA_CENTER")]
+    data_center: &'a str,
+    #[serde(rename = "DEFAULT_DIRECTORY")]
+    default_directory: &'a str,
+    #[serde(rename = "LIBRARY_ID")]
+    library_id: &'a str,
+    #[serde(rename = "VERIFY")]
+    verify: bool,
+}
+
+#[derive(serde::Serialize)]
+struct LegacyProject<'a> {
+    /// Not a CLI key. The old format named the study only by its filename, which a
+    /// rename or a download folder loses; carrying it means a re-import restores it.
+    #[serde(rename = "NAME")]
+    name: &'a str,
+    #[serde(rename = "SURVEY_ID")]
+    survey_id: &'a str,
+    #[serde(rename = "MESSAGE_ID")]
+    message_id: &'a str,
+    #[serde(rename = "MESSAGE_ID_EMAIL")]
+    message_id_email: &'a str,
+    #[serde(rename = "MAILING_LIST_ID")]
+    mailing_list_id: &'a str,
+    #[serde(rename = "TIMEZONE")]
+    timezone: &'a str,
+    // The correct spelling, never the CLI's MINUTES_EXP.
+    #[serde(rename = "MINUTES_EXPIRE")]
+    minutes_expire: u32,
+}
+
+#[derive(serde::Serialize)]
+struct LegacyEmbedded<'a> {
+    // These are Qualtrics' own embedded-data key names; `exports_the_canonical_embedded_keys`
+    // holds them to what EmbeddedDefaults::as_pairs writes.
+    #[serde(rename = "StartDate")]
+    start_date: &'a str,
+    #[serde(rename = "SurveysScheduled")]
+    surveys_scheduled: i64,
+    #[serde(rename = "TimeSlots")]
+    time_slots: &'a str,
+    // ContactMethod, not the pre-2024 UseSMS, so a re-import needs no derivation.
+    #[serde(rename = "ContactMethod")]
+    contact_method: &'a str,
+    #[serde(rename = "DeleteUnsent")]
+    delete_unsent: i64,
+    #[serde(rename = "NumDays")]
+    num_days: i64,
+    #[serde(rename = "ExpireMinutes")]
+    expire_minutes: i64,
+    #[serde(rename = "LogData")]
+    log_data: &'a str,
+    #[serde(rename = "TimeZone")]
+    time_zone: &'a str,
+}
+
+#[derive(serde::Serialize)]
+struct LegacyEmailHeader<'a> {
+    #[serde(rename = "FROM_EMAIL")]
+    from_email: &'a str,
+    #[serde(rename = "FROM_NAME")]
+    from_name: &'a str,
+    #[serde(rename = "REPLY_TO_EMAIL")]
+    reply_to_email: &'a str,
+    #[serde(rename = "SUBJECT")]
+    subject: &'a str,
+}
+
+/// Writes a profile back out in the format `parse_config` reads.
+///
+/// The API token is deliberately absent: it lives in the OS credential store, and the
+/// CLI kept it in a separate dotenv file for the same reason.
+pub fn build_legacy_yaml(account: &Account, project: &Project) -> AppResult<String> {
+    let e = &project.embedded_defaults;
+    let file = LegacyFile {
+        account: LegacyAccount {
+            data_center: &account.data_center,
+            default_directory: &account.default_directory,
+            library_id: &account.library_id,
+            verify: account.verify_tls,
+        },
+        project: LegacyProject {
+            name: &project.name,
+            survey_id: &project.survey_id,
+            message_id: &project.message_id,
+            message_id_email: &project.message_id_email,
+            mailing_list_id: &project.mailing_list_id,
+            timezone: &project.timezone,
+            minutes_expire: project.minutes_expire,
+        },
+        embedded_data: LegacyEmbedded {
+            start_date: &e.start_date,
+            surveys_scheduled: e.surveys_scheduled,
+            time_slots: &e.time_slots,
+            contact_method: &e.contact_method,
+            delete_unsent: e.delete_unsent,
+            num_days: e.num_days,
+            expire_minutes: e.expire_minutes,
+            log_data: &e.log_data,
+            time_zone: &e.time_zone,
+        },
+        email_header: LegacyEmailHeader {
+            from_email: &project.email_header.from_email,
+            from_name: &project.email_header.from_name,
+            reply_to_email: &project.email_header.reply_to_email,
+            subject: &project.email_header.subject,
+        },
+    };
+
+    let yaml = serde_yaml::to_string(&file)
+        .map_err(|e| AppError::Import(format!("could not write the config: {e}")))?;
+    Ok(format!(
+        "# Exported by QualSched. Readable by Import Config and by the qualtrics_util CLI.\n\
+         # The API token is not in this file; it stays in the credential store of the\n\
+         # computer it was entered on.\n{yaml}"
+    ))
 }
 
 fn parse_embedded(
@@ -478,6 +632,122 @@ project:
     fn rejects_a_file_that_is_not_a_qualtrics_config() {
         let err = parse_config("some: other\nthing: here\n", "notes.yaml").unwrap_err();
         assert!(err.to_string().contains("qualtrics_util config"));
+    }
+
+    fn exportable() -> (Account, Project) {
+        let account = Account {
+            id: Uuid::new_v4(),
+            name: "VA".into(),
+            data_center: "gov1".into(),
+            verify_tls: false,
+            default_directory: "POOL_9zzzzzzzzzzzzzz".into(),
+            library_id: "UR_9zzzzzzzzzzzzzz".into(),
+            projects: Vec::new(),
+        };
+        let project = Project {
+            id: Uuid::new_v4(),
+            name: "Sleep study".into(),
+            survey_id: "SV_9zzzzzzzzzzzzzz".into(),
+            message_id: "MS_sms".into(),
+            message_id_email: "MS_email".into(),
+            mailing_list_id: "CG_9zzzzzzzzzzzzzz".into(),
+            timezone: "America/New_York".into(),
+            minutes_expire: 45,
+            email_header: EmailHeader {
+                from_email: "study@umn.edu".into(),
+                from_name: "Sleep Study".into(),
+                reply_to_email: "reply@umn.edu".into(),
+                subject: "Your evening survey".into(),
+            },
+            embedded_defaults: EmbeddedDefaults {
+                start_date: "2026-03-16".into(),
+                surveys_scheduled: 0,
+                time_slots: "800,1200,2350".into(),
+                contact_method: "email".into(),
+                delete_unsent: 1,
+                num_days: 14,
+                expire_minutes: 45,
+                log_data: r#"[{"action":"init"}]"#.into(),
+                time_zone: "America/New_York".into(),
+            },
+            survey_copies: Vec::new(),
+            copies_source_survey_id: String::new(),
+        };
+        (account, project)
+    }
+
+    // Export exists to move a study to another machine, so everything the profile holds
+    // has to survive the trip out and back.
+    #[test]
+    fn export_round_trips_through_the_importer() {
+        let (account, project) = exportable();
+        let yaml = build_legacy_yaml(&account, &project).unwrap();
+        // A name the file cannot have come from, to prove NAME is what is read.
+        let out = parse_config(&yaml, "config_qualtrics_downloaded_2.yaml").unwrap();
+
+        assert_eq!(out.account.data_center, "gov1");
+        assert!(!out.account.verify_tls);
+        assert_eq!(out.account.default_directory, "POOL_9zzzzzzzzzzzzzz");
+        assert_eq!(out.account.library_id, "UR_9zzzzzzzzzzzzzz");
+
+        assert_eq!(out.project.name, "Sleep study");
+        assert_eq!(out.project.survey_id, "SV_9zzzzzzzzzzzzzz");
+        assert_eq!(out.project.message_id, "MS_sms");
+        assert_eq!(out.project.message_id_email, "MS_email");
+        assert_eq!(out.project.mailing_list_id, "CG_9zzzzzzzzzzzzzz");
+        assert_eq!(out.project.timezone, "America/New_York");
+        assert_eq!(out.project.minutes_expire, 45);
+        assert_eq!(out.project.email_header, project.email_header);
+        assert_eq!(out.project.embedded_defaults, project.embedded_defaults);
+
+        // Nothing was defaulted, so neither warning applies. (TLS is off in this
+        // fixture, which warns for its own good reason.)
+        assert!(!out.warnings.iter().any(|w| w.contains("sender")));
+        assert!(!out.warnings.iter().any(|w| w.contains("MESSAGE_ID_EMAIL")));
+    }
+
+    // The token is the one thing the old format never carried and this one must not
+    // either: exports get emailed around.
+    #[test]
+    fn the_export_never_contains_a_token() {
+        let (account, project) = exportable();
+        let yaml = build_legacy_yaml(&account, &project).unwrap().to_lowercase();
+        assert!(!yaml.contains("apitoken"));
+        assert!(!yaml.contains("api_token"));
+        assert!(!yaml.contains("token:"));
+    }
+
+    // The exporter writes these key names by hand; as_pairs is what the app actually
+    // sends to Qualtrics. If one moves without the other, an exported file quietly
+    // loses a field on the way back in.
+    #[test]
+    fn exports_the_canonical_embedded_keys() {
+        let (account, project) = exportable();
+        let yaml = build_legacy_yaml(&account, &project).unwrap();
+        let root: Value = serde_yaml::from_str(&yaml).unwrap();
+        let written: Vec<String> = root
+            .get("embedded_data")
+            .and_then(Value::as_mapping)
+            .expect("embedded_data section")
+            .keys()
+            .map(scalar_to_string)
+            .collect();
+        let canonical: Vec<String> = project
+            .embedded_defaults
+            .as_pairs()
+            .into_iter()
+            .map(|(k, _)| k)
+            .collect();
+        assert_eq!(written, canonical);
+    }
+
+    // A file from the CLI has no NAME and no email_header; it must behave as it always did.
+    #[test]
+    fn a_cli_file_still_falls_back_to_the_filename_and_warns() {
+        let out = parse_config(UMN, "config_qualtrics_ema_pilot.yaml").unwrap();
+        assert_eq!(out.project.name, "ema pilot");
+        assert_eq!(out.project.email_header, EmailHeader::default());
+        assert!(out.warnings.iter().any(|w| w.contains("sender")));
     }
 
     #[test]
