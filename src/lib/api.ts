@@ -19,6 +19,7 @@ import type {
   SchedulePreview,
   SendReport,
   TestResult,
+  UpdateInfo,
 } from "./types";
 
 // --- config ---------------------------------------------------------------
@@ -193,3 +194,8 @@ export const exportProjectConfig = (
   projectId: string,
   path: string,
 ) => invoke<void>("export_project_config", { accountId, projectId, path });
+
+// --- updates --------------------------------------------------------------
+
+/** Asks GitHub for the newest published release. Rejects when offline. */
+export const checkForUpdate = () => invoke<UpdateInfo>("check_for_update");

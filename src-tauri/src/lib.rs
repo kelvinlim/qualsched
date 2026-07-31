@@ -15,6 +15,7 @@ use crate::state::AppState;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             // A corrupt or unreadable config must not block startup: fall back to empty
             // so the user can still reach the UI and fix it.
@@ -57,6 +58,7 @@ pub fn run() {
             commands::import_cmds::preview_legacy_import,
             commands::import_cmds::confirm_legacy_import,
             commands::export_cmds::export_project_config,
+            commands::update_cmds::check_for_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running QualSched");

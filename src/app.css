@@ -127,6 +127,16 @@ p {
   cursor: not-allowed;
 }
 
+/* Pinned to the foot of the sidebar: it is about the app itself rather than a
+   step in running a study. */
+.sidebar button.nav.whats-new {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
 main {
   overflow-y: auto;
   padding: 1.5rem 2rem 3rem;
@@ -411,6 +421,10 @@ td.wrap {
   background: var(--bg);
   color: var(--muted);
   border: 1px solid var(--border);
+}
+.badge.update {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 .badge.warn {
   background: var(--warn-soft);

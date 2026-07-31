@@ -1,8 +1,11 @@
 <script lang="ts">
   import { getVersion } from "@tauri-apps/api/app";
 
+  import * as api from "./lib/api";
   import { app, type ScreenName } from "./lib/state.svelte";
-  import { errorMessage } from "./lib/types";
+  import { errorMessage, type UpdateInfo } from "./lib/types";
+
+  import ChangelogPanel from "./components/ChangelogPanel.svelte";
 
   import AccountsScreen from "./screens/AccountsScreen.svelte";
   import ProjectScreen from "./screens/ProjectScreen.svelte";
@@ -17,10 +20,38 @@
   // Read from the bundle rather than hardcoded, so it tracks tauri.conf.json.
   let version = $state("");
 
+  let changelogOpen = $state(false);
+  let update = $state<UpdateInfo | null>(null);
+  let checking = $state(false);
+  let checkError = $state("");
+
+  const LAST_SEEN_KEY = "qualsched.lastSeenVersion";
+
+  // `silent` is set for the check on launch: being offline is the normal case for
+  // a laptop opened before it joins wifi, and must not greet the user with an error.
+  async function check(silent: boolean) {
+    checking = true;
+    checkError = "";
+    try {
+      update = await api.checkForUpdate();
+    } catch (e) {
+      if (!silent) checkError = errorMessage(e);
+    } finally {
+      checking = false;
+    }
+  }
+
   $effect(() => {
     app.load().catch((e) => (loadError = errorMessage(e)));
+    check(true);
     getVersion()
-      .then((v) => (version = v))
+      .then((v) => {
+        version = v;
+        // Only after an actual upgrade — a fresh install has nothing to catch up on.
+        const seen = localStorage.getItem(LAST_SEEN_KEY);
+        if (seen && seen !== v) changelogOpen = true;
+        localStorage.setItem(LAST_SEEN_KEY, v);
+      })
       .catch(() => (version = ""));
   });
 
@@ -103,6 +134,16 @@
       </button>
     {/each}
 
+    <button
+      class="nav whats-new"
+      title="Release notes for this and earlier versions, and whether a newer one is out"
+      onclick={() => (changelogOpen = true)}
+    >
+      What's new
+      {#if update?.updateAvailable}
+        <span class="badge update">v{update.latestVersion}</span>
+      {/if}
+    </button>
   </nav>
 
   <main>
@@ -155,3 +196,11 @@
     {/if}
   </main>
 </div>
+
+<ChangelogPanel
+  bind:open={changelogOpen}
+  {update}
+  {checking}
+  {checkError}
+  oncheck={() => check(false)}
+/>

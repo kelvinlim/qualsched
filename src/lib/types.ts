@@ -184,6 +184,15 @@ export interface ScheduleProgress {
   ok: boolean;
 }
 
+export interface UpdateInfo {
+  currentVersion: string;
+  latestVersion: string;
+  updateAvailable: boolean;
+  /** The release body, markdown. */
+  releaseNotes: string;
+  releaseUrl: string;
+}
+
 /** Shape every rejected `invoke` takes — see AppError's Serialize impl in Rust. */
 export interface AppError {
   kind: string;

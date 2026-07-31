@@ -2,6 +2,18 @@
 
 All notable changes to QualSched are documented in this file.
 
+## [0.1.9] - 2026-07-31
+
+### Added
+- **What's new**, at the foot of the sidebar: a panel showing this changelog, so
+  the release notes for the version you are running are readable inside the app.
+- The app checks for a newer release on GitHub when it starts. If one is out, the
+  sidebar item carries its version number, and the panel shows that release's
+  notes with a button to download it in your browser. The check is silent when it
+  fails, so an offline start looks no different from an ordinary one; a **Check
+  for updates** button in the panel reports what went wrong.
+- After an update, the panel opens by itself the first time the new version runs.
+
 ## [0.1.8] - 2026-07-31
 
 ### Added
