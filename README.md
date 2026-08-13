@@ -7,8 +7,15 @@ rights on Windows, macOS and Linux.
 **Running a study with QualSched? Start with the [User Guide](docs/USER_GUIDE.md).** The
 rest of this file is for people building or packaging the app.
 
-> **Note:** this README replaced the original one in this folder, which was overwritten
-> when the Tauri scaffold was unpacked here. Restore anything you need from a backup.
+QualSched is free and open source under the [MIT License](LICENSE).
+
+## Installing
+
+Download the installer for your platform from the
+[Releases page](https://github.com/kelvinlim/qualsched/releases) — a Windows `.exe`, a
+macOS `.dmg`, or a Linux AppImage or `.deb`. None of them require administrator rights.
+
+On macOS the build is signed ad-hoc, so the first launch needs right-click → **Open**.
 
 ## What it does
 
@@ -157,3 +164,8 @@ src-tauri/src/
 ```
 
 All Qualtrics API calls happen in Rust; the webview never sees the API token.
+
+## License
+
+MIT — see [LICENSE](LICENSE). QualSched is developed by
+[OmniKog LLC](https://omnikog.com/qualsched).

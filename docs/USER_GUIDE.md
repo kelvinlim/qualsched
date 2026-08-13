@@ -130,7 +130,7 @@ You enter it once per account, on the Accounts screen.
 
 ## What the window looks like
 
-![The QualSched window on first launch, with an empty sidebar](images/01-first-launch.png)
+<!-- screenshot pending: ![The QualSched window on first launch, with an empty sidebar](images/01-first-launch.png) -->
 *The eight screens down the left. Four of them are greyed out until you have set up an account and a survey profile.*
 
 Down the left are eight screens, in the order you use them:
@@ -200,7 +200,7 @@ You will want two files, though only the first is required:
 
 ## A2. Choose the files
 
-![The import screen with both file paths filled in](images/02-import-choose-files.png)
+<!-- screenshot pending: ![The import screen with both file paths filled in](images/02-import-choose-files.png) -->
 *Step one: point QualSched at the old settings file, and at the token file if you have it.*
 
 Press **Browse…** next to *Config file* and pick your `.yaml` file. If you have the token
@@ -214,7 +214,7 @@ Press **Read config**. Still nothing has been saved.
 
 ## A3. Check what was found
 
-![The import review step, showing the settings found and several warnings](images/03-import-review.png)
+<!-- screenshot pending: ![The import review step, showing the settings found and several warnings](images/03-import-review.png) -->
 *Everything QualSched pulled out of the file, plus anything it wants to warn you about.*
 
 **Import into** decides where the profile lands. Leave it on **Create a new account** the
@@ -278,7 +278,7 @@ if you made one.
 
 ## A6. Finish the account
 
-![The Accounts screen with a successful connection test](images/04-accounts-connected.png)
+<!-- screenshot pending: ![The Accounts screen with a successful connection test](images/04-accounts-connected.png) -->
 *A working account: token stored, data center set, and Qualtrics answering.*
 
 Go to **Accounts** and check the imported settings:
@@ -307,7 +307,7 @@ will be copying from it.
 
 ## B1. Create the account
 
-![The Accounts screen with a successful connection test](images/04-accounts-connected.png)
+<!-- screenshot pending: ![The Accounts screen with a successful connection test](images/04-accounts-connected.png) -->
 *A working account: token stored, data center set, and Qualtrics answering.*
 
 Go to **Accounts** and press **+ Add account**. Fill in the *Connection* card:
@@ -357,7 +357,7 @@ Go to **Survey profile** and press **+ Add profile**.
 
 ### Survey and recipients
 
-![The Survey profile screen with survey, mailing list and templates chosen](images/05-profile-top.png)
+<!-- screenshot pending: ![The Survey profile screen with survey, mailing list and templates chosen](images/05-profile-top.png) -->
 *The first two cards. Each dropdown fills itself from Qualtrics once you press Load.*
 
 - **Profile name** — your study's name.
@@ -372,7 +372,7 @@ Go to **Survey profile** and press **+ Add profile**.
 > Qualtrics is unreachable, and a saved setting is never silently wiped just because a list
 > failed to load.
 >
-> ![An unloaded dropdown showing its text box and Load link](images/12-dropdown-unloaded.png)
+> <!-- screenshot pending: ![An unloaded dropdown showing its text box and Load link](images/12-dropdown-unloaded.png) -->
 
 ### Invitation templates
 
@@ -391,7 +391,7 @@ harmless.
 
 ### Email sender
 
-![The email sender and scheduling defaults cards](images/06-profile-defaults.png)
+<!-- screenshot pending: ![The email sender and scheduling defaults cards](images/06-profile-defaults.png) -->
 *The bottom of the Survey profile screen. These defaults decide what new participants get.*
 
 Skip this card entirely if your study is SMS-only.
@@ -484,7 +484,7 @@ The rest of this section is that loop in detail.
 
 ## Step 1 — Review the participant list
 
-![The Contacts screen showing ready and skipped participants](images/07-contacts-list.png)
+<!-- screenshot pending: ![The Contacts screen showing ready and skipped participants](images/07-contacts-list.png) -->
 *Everyone in the mailing list, their scheduling values, and whether each is ready.*
 
 **Contacts** shows everybody in your mailing list. Names read "Last, First". Every column
@@ -510,7 +510,7 @@ Press **Refresh** to re-read from Qualtrics if a colleague has been editing the 
 
 ## Step 2 — Add or edit a participant
 
-![The participant editor open in edit mode](images/11-contact-editor.png)
+<!-- screenshot pending: ![The participant editor open in edit mode](images/11-contact-editor.png) -->
 *Who they are, and when they should be prompted.*
 
 **+ Add participant**, or **Edit** on any row.
@@ -540,7 +540,7 @@ get stuck.
 
 Go to **Schedule** and press **Compute plan**. Nothing is sent.
 
-![The Schedule screen showing a computed plan](images/08-schedule-preview.png)
+<!-- screenshot pending: ![The Schedule screen showing a computed plan](images/08-schedule-preview.png) -->
 *Every invitation that would go out, with the exact moment each one arrives.*
 
 If you use random time windows, **the actual times are drawn now**, and those exact times
@@ -558,7 +558,7 @@ arrives.
 
 Underneath, two more cards appear when relevant:
 
-![The skipped participants and dropped times cards](images/13-schedule-skipped.png)
+<!-- screenshot pending: ![The skipped participants and dropped times cards](images/13-schedule-skipped.png) -->
 
 - **"N participant(s) skipped"** — people who get nothing, and why.
 - **"N individual time(s) dropped"** — individual moments that have already passed. An
@@ -573,7 +573,7 @@ Press **Send N invitations** and confirm. A progress bar counts through them; a 
 takes a few minutes, because QualSched deliberately paces the requests to stay inside
 Qualtrics' rate limits.
 
-![A successful send](images/09-schedule-result.png)
+<!-- screenshot pending: ![A successful send](images/09-schedule-result.png) -->
 
 A green banner means everything went through. If some failed, a table lists which and why —
 the rest still went out, so fix the cause and compute a fresh plan for what is left.
@@ -585,7 +585,7 @@ the rest still went out, so fix the cause and compute a fresh plan for what is l
 
 ## Step 7 — Confirm on Distributions
 
-![The Distributions screen listing booked invitations](images/10-distributions.png)
+<!-- screenshot pending: ![The Distributions screen listing booked invitations](images/10-distributions.png) -->
 *Everything already booked with Qualtrics, and anything still cancellable.*
 
 Choose **SMS** or **Email** and press **Load**. **Not yet sent only** is ticked by default,

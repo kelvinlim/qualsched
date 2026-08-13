@@ -4,6 +4,8 @@ version = "0.1.9"
 description = "Desktop GUI for scheduling Qualtrics survey distributions"
 authors = ["LNPI"]
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/kelvinlim/qualsched"
 
 [lib]
 # The `_lib` suffix keeps the lib name distinct from the bin name (required on Windows).
