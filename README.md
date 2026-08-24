@@ -93,6 +93,10 @@ data.
 The same rules without the jargon, plus every skip reason and what to do about it, are in
 [the guide](docs/USER_GUIDE.md#reference-the-scheduling-fields).
 
+Qualtrics enforces contact-frequency rules and blocks duplicate SMS invitations independently
+of these scheduling rules — see [docs/qualtrics-sms-limits.md](docs/qualtrics-sms-limits.md)
+for the official behavior and observed field limits.
+
 ### Differences from the command-line tool
 
 Behavior is otherwise a faithful port, but six things were deliberately changed:
