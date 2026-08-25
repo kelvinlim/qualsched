@@ -330,11 +330,10 @@ pub struct PlanInputs<'a> {
 /// Returns the sendable items plus a reason for each slot that was dropped, so the
 /// preview can explain a short plan instead of silently producing fewer invitations.
 ///
-/// Every slot of every day sends through `input.survey`. Qualtrics delivers only the first
-/// invitation for a given survey to a given contact each day, so a plan with several slots
-/// a day will not fully arrive; 0.1.4 tried to route each administration through a clone of
-/// the survey and that did not work, so the plan is now booked in full and
-/// `multi_administration_warning` says plainly what to expect.
+/// Every slot of every day sends through `input.survey`. Qualtrics drops a second SMS
+/// with the same wording to the same number within 24 hours; `decorate_message` puts
+/// the uniqueness tag before the survey-link piped text so the copies differ.
+/// `multi_administration_warning` still asks the user to confirm a test send.
 pub fn build_contact_plan<R: Rng + ?Sized>(
     input: &PlanInputs,
     now: DateTime<Utc>,
@@ -433,18 +432,18 @@ pub fn build_contact_plan<R: Rng + ?Sized>(
 
 /// What to tell the user when a plan asks for more than one invitation a day.
 ///
-/// Qualtrics delivers only the first invitation for a given survey to a given contact each
-/// day; the rest are accepted, booked, and then dropped, reporting zero sends. A random
-/// suffix on the message defeats the content-based dedup but not this one. 0.1.4 routed each
-/// administration through a clone of the survey to get around it and that did not work in the
-/// field, so the plan is booked in full and the limit is stated instead of worked around.
+/// Qualtrics' documented rule is the same SMS wording to the same number within 24 hours,
+/// not one invitation per survey per contact. A tag after the piped link was not enough;
+/// `decorate_message` now places it before the link. The warning stays so a test send is
+/// confirmed before a whole list is enrolled.
 pub fn multi_administration_warning(max_slots_per_day: usize) -> Option<String> {
     (max_slots_per_day > 1).then(|| {
         format!(
             "Some participants are scheduled for {max_slots_per_day} invitations a day. \
-             Qualtrics delivers only the first invitation for a survey to a given person \
-             each day — the rest are accepted, booked, and then silently dropped, reporting \
-             zero sends. Expect roughly one invitation per participant per day to arrive."
+             Qualtrics drops a second SMS with the same wording to the same number within \
+             24 hours. Each SMS now carries a unique tag before the survey link so the \
+             copies differ — send a test participant first and confirm every slot arrives \
+             before enrolling the rest of the list."
         )
     })
 }
@@ -490,10 +489,50 @@ fn slot_label(slot: Slot) -> String {
 // ---------------------------------------------------------------------------
 
 /// Qualtrics refuses a second invitation with identical content on the same day, so
-/// each message body gets a unique tag appended. Format matches the CLI's so existing
-/// participants see nothing new.
-pub fn decorate_message<R: Rng + ?Sized>(body: &str, rng: &mut R) -> String {
-    format!("{body}\n&nbsp;\n{}\n", random_tag(rng))
+/// each message body gets a unique tag. Email keeps the CLI's trailing suffix.
+///
+/// SMS uniqueness has to sit *before* the survey-link piped text. Qualtrics' 24-hour
+/// duplicate check treats "the same invitation message" as the body through the link;
+/// a tag after `${l://SurveyURL}` / `${I://SurveyURL}` is ignored, and HTML `&nbsp;`
+/// is meaningless in SMS. When the template has no piped link the tag is prepended.
+pub fn decorate_message<R: Rng + ?Sized>(body: &str, method: Method, rng: &mut R) -> String {
+    let tag = random_tag(rng);
+    match method {
+        Method::Sms => decorate_sms(body, &tag),
+        Method::Email => format!("{body}\n&nbsp;\n{tag}\n"),
+    }
+}
+
+fn decorate_sms(body: &str, tag: &str) -> String {
+    let tag = tag.trim_start_matches('\n');
+    if let Some(idx) = first_survey_link_index(body) {
+        let before = &body[..idx];
+        let after = &body[idx..];
+        let sep = if before.is_empty() || before.ends_with('\n') {
+            ""
+        } else {
+            "\n"
+        };
+        format!("{before}{sep}{tag}\n{after}")
+    } else {
+        format!("{tag}\n{body}")
+    }
+}
+
+/// Index of the first Qualtrics survey-link piped token, if the template has one.
+fn first_survey_link_index(body: &str) -> Option<usize> {
+    let mut search_from = 0;
+    while let Some(rel) = body[search_from..].find("${") {
+        let start = search_from + rel;
+        let rest = &body[start..];
+        let Some(end) = rest.find('}') else { break };
+        let token = rest[..=end].to_ascii_lowercase();
+        if token.contains("surveyurl") || token.contains("surveylink") {
+            return Some(start);
+        }
+        search_from = start + 2;
+    }
+    None
 }
 
 fn random_tag<R: Rng + ?Sized>(rng: &mut R) -> String {

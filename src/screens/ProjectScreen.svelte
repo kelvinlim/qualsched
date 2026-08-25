@@ -268,8 +268,9 @@
               <label for="msg-preview">Message text</label>
               <textarea id="msg-preview" rows="5" readonly>{messagePreview}</textarea>
               <div class="hint">
-                A short random tag is appended to each invitation before sending, so that
-                two messages on the same day are not rejected as duplicates.
+                A short random tag is added to each invitation before sending, so that
+                two messages on the same day are not rejected as duplicates. For SMS it
+                is placed before the survey-link piped text.
               </div>
             </div>
           {/if}

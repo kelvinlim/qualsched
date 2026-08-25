@@ -256,7 +256,7 @@ fn the_one_a_day_warning_fires_only_for_multi_slot_plans() {
     assert!(multi_administration_warning(1).is_none());
     let warning = multi_administration_warning(4).expect("four a day should warn");
     assert!(warning.contains('4'));
-    assert!(warning.contains("first invitation"));
+    assert!(warning.contains("24 hours"));
 }
 
 #[test]
@@ -465,10 +465,52 @@ fn bad_start_date_is_skipped_with_a_reason() {
 // --- message decoration ----------------------------------------------------
 
 #[test]
-fn message_suffix_is_unique_per_call() {
+fn email_suffix_is_unique_per_call() {
     let mut rng = rng();
-    let a = decorate_message("Time for your survey", &mut rng);
-    let b = decorate_message("Time for your survey", &mut rng);
+    let a = decorate_message("Time for your survey", Method::Email, &mut rng);
+    let b = decorate_message("Time for your survey", Method::Email, &mut rng);
     assert!(a.starts_with("Time for your survey"));
+    assert!(a.contains("&nbsp;"));
     assert_ne!(a, b, "duplicate bodies would trip Qualtrics' one-per-day rule");
+}
+
+#[test]
+fn sms_inserts_tag_before_piped_survey_link() {
+    let mut rng = rng();
+    let body = "Time for your survey ${l://SurveyURL}";
+    let decorated = decorate_message(body, Method::Sms, &mut rng);
+    let tag_at = decorated.find('[').expect("tag");
+    let link_at = decorated.find("${l://SurveyURL}").expect("link");
+    assert!(tag_at < link_at, "tag {tag_at} must precede the piped link {link_at}");
+    assert!(!decorated.contains("&nbsp;"), "SMS is not HTML");
+    assert!(decorated.contains("${l://SurveyURL}"));
+}
+
+#[test]
+fn sms_inserts_tag_before_uppercase_i_survey_url() {
+    let decorated = decorate_message(
+        "Please complete ${I://SurveyURL} today",
+        Method::Sms,
+        &mut rng(),
+    );
+    let tag_at = decorated.find('[').expect("tag");
+    let link_at = decorated.find("${I://SurveyURL}").expect("link");
+    assert!(tag_at < link_at);
+}
+
+#[test]
+fn sms_prepends_tag_when_template_has_no_piped_link() {
+    let decorated = decorate_message("Time for your survey", Method::Sms, &mut rng());
+    assert!(decorated.starts_with('['), "{decorated:?}");
+    assert!(decorated.contains("Time for your survey"));
+    assert!(!decorated.contains("&nbsp;"));
+}
+
+#[test]
+fn sms_decorations_of_the_same_body_differ() {
+    let mut rng = rng();
+    let body = "Check in ${l://SurveyURL}";
+    let a = decorate_message(body, Method::Sms, &mut rng);
+    let b = decorate_message(body, Method::Sms, &mut rng);
+    assert_ne!(a, b);
 }

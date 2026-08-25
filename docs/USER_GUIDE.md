@@ -386,7 +386,8 @@ to discover after eighty invitations have gone out.
 
 You will notice a note about a short random tag being added to each invitation. Qualtrics
 refuses to send two identical messages to the same person on the same day, so QualSched
-appends a few random characters to keep them distinct. Participants see it; it is
+inserts a few random characters to keep them distinct — for SMS, before the survey-link
+piped text, because a tag after the link is ignored. Participants see it; it is
 harmless.
 
 ### Email sender
@@ -553,8 +554,8 @@ which slot, the local time in *their* time zone, the same moment in UTC, and whe
 expires.
 
 A yellow banner above the table warns when the plan asks for more than one invitation a day
-— see [More than one invitation a day](#more-than-one-invitation-a-day) for what actually
-arrives.
+— see [More than one invitation a day](#more-than-one-invitation-a-day) before you enrol a
+whole list.
 
 Underneath, two more cards appear when relevant:
 
@@ -720,16 +721,18 @@ The Survey profile screen checks as you type and will not let you save something
 
 ## More than one invitation a day
 
-Qualtrics delivers only the **first** invitation for a given survey to a given person each
-day. If your time slots ask for four, the first arrives and the rest are accepted,
-scheduled, and then quietly dropped, reporting zero sends. Making the messages different
-does not help — the limit is on the survey, not the wording.
+Qualtrics will not send the **same SMS wording** to the same phone number twice within
+24 hours. Later invitations are accepted, booked, and then quietly dropped, reporting
+zero sends. Changing the survey (the old `-c1` / `-c2` copies) does not help; changing
+the message text does.
 
-QualSched books every slot you ask for and shows a yellow warning on the Schedule screen
-whenever a plan has more than one invitation a day, so you see this before you send rather
-than after. There is no way around the limit from inside QualSched. If your design needs
-several prompts a day, ask Qualtrics Support what your account's options are before you
-enrol participants.
+QualSched inserts a short random tag *before* the survey-link piped text on each SMS so
+the copies differ. A tag after the link is ignored. Email still gets a trailing tag.
+Confirm on a test number that every slot of the day actually arrives before you enrol
+the rest of the list.
+
+The Schedule screen still shows a yellow warning when a plan has more than one invitation
+a day, so you see the 24-hour rule before you send.
 
 > **Upgrading from an earlier version?** A previous release tried to work around this by
 > cloning your survey into `-c1`, `-c2` and so on and sending each administration of the day

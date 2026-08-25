@@ -336,8 +336,9 @@ pub async fn execute_schedule(
             }
         };
 
-        // Fresh suffix per message, so two invitations on one day stay distinct.
-        let text = decorate_message(&body, &mut rng);
+        // Fresh tag per message, so two invitations on one day stay distinct.
+        // SMS: before the survey-link piped text. Email: historical trailing suffix.
+        let text = decorate_message(&body, item.method, &mut rng);
         let req = SendRequest {
             project: &project,
             survey_id: &item.survey_id,

@@ -33,7 +33,7 @@ pub async fn list_messages(
 ///
 /// The distribution payloads inline this text rather than referencing `messageId`:
 /// Qualtrics refuses a second send with identical content on the same day, so each
-/// invitation gets the body plus a fresh random suffix.
+/// invitation gets a unique tag (before the survey-link piped text for SMS).
 pub async fn get_message_text(
     client: &QualtricsClient,
     library_id: &str,

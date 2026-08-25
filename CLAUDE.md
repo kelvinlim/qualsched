@@ -59,7 +59,7 @@ These look like bugs against the reference and are not. Do not "restore" them:
 
 - The contact `PUT` echoes back the whole record, but Qualtrics rejects `contactId`, `contactLookupId`, and `mailingListUnsubscribed` on the way in. A null `email` must be omitted entirely rather than sent as null.
 - Distributions are addressed by `contactLookupId` (`CGC_…`), not `contactId`. The mailing-list response usually carries it; only fall back to the directory-contact request when it doesn't.
-- Message text is fetched and inlined with a random suffix rather than sent by `messageId`. Qualtrics refuses a second invitation with identical content on the same day.
+- Message text is fetched and inlined rather than sent by `messageId`. Qualtrics refuses a second SMS with identical wording to the same number within 24 hours, so SMS gets a unique tag *before* the survey-link piped text; email keeps a trailing suffix.
 - Writes are paced by `client::WRITE_PACING` to stay under rate limits.
 - `verify_tls: false` exists for the VA's `gov1` data center, which sits behind TLS interception.
 

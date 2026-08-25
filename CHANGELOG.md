@@ -2,6 +2,18 @@
 
 All notable changes to QualSched are documented in this file.
 
+## [0.1.10] - 2026-08-25
+
+### Changed
+- SMS invitations now place the unique tag *before* the survey-link piped text,
+  and no longer append HTML `&nbsp;`. Qualtrics' 24-hour duplicate check treats
+  identical wording to the same number as one invitation; a tag after the link
+  was ignored, which is why later same-day SMS slots were booked and then
+  dropped. Email still uses the historical trailing suffix.
+- The Schedule warning for several invitations a day now describes that
+  24-hour same-wording rule and asks you to confirm a test participant receives
+  every slot, rather than stating that only the first one will arrive.
+
 ## [0.1.9] - 2026-07-31
 
 ### Added
