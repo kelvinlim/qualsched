@@ -1,8 +1,8 @@
 # QualSched
 
 A desktop app for scheduling Qualtrics survey invitations in EMA studies. It replaces
-the `qualtrics_util` command-line tool with a GUI that installs without administrator
-rights on Windows, macOS and Linux.
+the `qualtrics_util` command-line tool with a GUI. The Windows NSIS installer, and the
+macOS and Linux packages, install without administrator rights.
 
 **Running a study with QualSched? Start with the [User Guide](docs/USER_GUIDE.md).** The
 rest of this file is for people building or packaging the app.
@@ -12,8 +12,11 @@ QualSched is free and open source under the [MIT License](LICENSE).
 ## Installing
 
 Download the installer for your platform from the
-[Releases page](https://github.com/kelvinlim/qualsched/releases) — a Windows `.exe`, a
-macOS `.dmg`, or a Linux AppImage or `.deb`. None of them require administrator rights.
+[Releases page](https://github.com/kelvinlim/qualsched/releases) — a Windows NSIS `.exe`
+or `.msi`, a macOS `.dmg`, or a Linux AppImage or `.deb`. The NSIS `.exe`, and the
+macOS and Linux packages, install without administrator rights. The MSI is a
+per-machine install and will ask for administrator approval. Neither Windows installer
+is code-signed yet.
 
 On macOS the build is signed ad-hoc, so the first launch needs right-click → **Open**.
 
@@ -140,8 +143,8 @@ cd src-tauri && cargo test
 ### Packaging
 
 `npm run tauri build` produces a Windows NSIS installer configured for per-user
-installation (no administrator prompt), a macOS `.app`/`.dmg`, and Linux AppImage and
-`.deb` bundles.
+installation (no administrator prompt), a Windows MSI (per-machine; administrator
+prompt), a macOS `.app`/`.dmg`, and Linux AppImage and `.deb` bundles.
 
 The macOS build is signed ad-hoc, so the first launch needs right-click → Open. For
 wider distribution, replace `bundle.macOS.signingIdentity` in
