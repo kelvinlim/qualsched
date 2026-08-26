@@ -2,6 +2,15 @@
 
 All notable changes to QualSched are documented in this file.
 
+## [0.1.11] - 2026-08-26
+
+### Added
+- Windows releases now include an MSI installer alongside the NSIS `.exe`. The
+  MSI is a per-machine install (administrator prompt) and, like the NSIS build,
+  is unsigned until a signing certificate is added. Prefer the MSI if Defender
+  flags the `.exe` — that is a known false positive for unsigned Tauri NSIS
+  installers.
+
 ## [0.1.10] - 2026-08-25
 
 ### Changed

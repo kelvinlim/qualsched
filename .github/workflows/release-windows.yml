@@ -63,7 +63,11 @@ jobs:
         include:
           - os: windows-latest
             artifact: QualSched-windows-x64
-            bundle: src-tauri/target/release/bundle/nsis/*-setup.exe
+            # NSIS setup.exe plus WiX MSI. Both globs must match: a missing
+            # MSI would otherwise still upload the exe and look successful.
+            bundle: |
+              src-tauri/target/release/bundle/nsis/*-setup.exe
+              src-tauri/target/release/bundle/msi/*.msi
           - os: macos-latest
             artifact: QualSched-macos-arm64
             bundle: src-tauri/target/release/bundle/dmg/*.dmg
@@ -156,6 +160,14 @@ jobs:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
 
+      # upload-artifact succeeds if *any* glob matches, so require both Windows
+      # installers explicitly before the shared upload step.
+      - name: Confirm Windows NSIS and MSI exist
+        if: runner.os == 'Windows'
+        run: |
+          Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe
+          Get-ChildItem src-tauri/target/release/bundle/msi/*.msi
+
       # Runs on every trigger, so a manual dispatch still yields a downloadable build.
       - name: Upload installer as workflow artifact
         uses: actions/upload-artifact@v4
@@ -193,14 +205,21 @@ jobs:
           body: |
             ## Windows
 
-            Download the `QualSched_*_x64-setup.exe` asset below and run it.
-            It installs per-user and needs no administrator rights.
+            Download either the `QualSched_*_x64-setup.exe` or the `.msi`
+            asset below.
 
-            The installer is not code-signed, so Windows SmartScreen will show
-            "Windows protected your PC" — click **More info**, then **Run anyway**.
+            The NSIS `*_x64-setup.exe` installs per-user and needs no
+            administrator rights. The MSI is a per-machine installer and
+            will prompt for administrator approval.
 
-            Installation needs an internet connection if Microsoft Edge WebView2
-            is not already present (it ships with Windows 11).
+            Neither installer is code-signed yet, so Windows SmartScreen
+            may show "Windows protected your PC" — click **More info**,
+            then **Run anyway**. The unsigned NSIS `.exe` is sometimes
+            flagged by Defender as a trojan (a known Tauri false positive);
+            try the MSI if that happens.
+
+            Installation needs an internet connection if Microsoft Edge
+            WebView2 is not already present (it ships with Windows 11).
 
             ## macOS (Apple Silicon)
 
