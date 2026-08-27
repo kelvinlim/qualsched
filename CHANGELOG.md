@@ -2,6 +2,12 @@
 
 All notable changes to QualSched are documented in this file.
 
+## [0.1.12] - 2026-08-27
+
+### Changed
+- Clicking a participant row on Contacts opens the existing editor and jumps to
+  it. The checkbox, **Edit**, and **Remove** keep their own actions.
+
 ## [0.1.11] - 2026-08-26
 
 ### Added
