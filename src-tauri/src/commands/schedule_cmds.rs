@@ -18,8 +18,8 @@ use crate::qualtrics::{
     QualtricsClient,
 };
 use crate::scheduler::{
-    build_contact_plan, contact_eligibility, decorate_message, multi_administration_warning,
-    Eligibility, EligibilityDefaults, Method, PlanInputs, PlanItem, Skipped,
+    build_contact_plan, contact_eligibility, decorate_message, Eligibility, EligibilityDefaults,
+    Method, PlanInputs, PlanItem, Skipped,
 };
 use crate::state::AppState;
 
@@ -98,9 +98,6 @@ pub async fn preview_schedule(
     let mut skipped_contacts = Vec::new();
     let mut skipped_slots = Vec::new();
     let survey = project.own_survey();
-    // Drives the one-a-day warning. Taken from the slots a contact asks for rather than the
-    // items it produced, so a contact whose first day is half past still counts in full.
-    let mut max_slots_per_day = 0usize;
 
     for contact in &raw {
         let name = display_name(contact);
@@ -168,7 +165,6 @@ pub async fn preview_schedule(
                     });
                     continue;
                 }
-                max_slots_per_day = max_slots_per_day.max(slots.len());
                 items.append(&mut plan);
                 skipped_slots.extend(dropped);
             }
@@ -180,9 +176,7 @@ pub async fn preview_schedule(
         items,
         skipped_contacts,
         skipped_slots,
-        warnings: multi_administration_warning(max_slots_per_day)
-            .into_iter()
-            .collect(),
+        warnings: Vec::new(),
     })
 }
 

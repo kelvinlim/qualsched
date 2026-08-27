@@ -251,15 +251,6 @@ fn a_midnight_crossing_window_sends_on_the_next_date() {
 }
 
 #[test]
-fn the_one_a_day_warning_fires_only_for_multi_slot_plans() {
-    assert!(multi_administration_warning(0).is_none());
-    assert!(multi_administration_warning(1).is_none());
-    let warning = multi_administration_warning(4).expect("four a day should warn");
-    assert!(warning.contains('4'));
-    assert!(warning.contains("24 hours"));
-}
-
-#[test]
 fn skips_past_slots_and_reports_them() {
     // "Now" sits midway through the schedule: day 0 is gone, day 1 remains.
     let slots = [Slot::Fixed(800), Slot::Fixed(2000)];

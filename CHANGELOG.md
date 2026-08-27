@@ -2,6 +2,12 @@
 
 All notable changes to QualSched are documented in this file.
 
+## [Unreleased]
+
+### Changed
+- The Schedule screen no longer warns that Qualtrics drops a second same-wording
+  SMS to the same number within 24 hours.
+
 ## [0.1.11] - 2026-08-26
 
 ### Added

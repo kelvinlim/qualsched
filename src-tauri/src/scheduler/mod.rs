@@ -330,10 +330,7 @@ pub struct PlanInputs<'a> {
 /// Returns the sendable items plus a reason for each slot that was dropped, so the
 /// preview can explain a short plan instead of silently producing fewer invitations.
 ///
-/// Every slot of every day sends through `input.survey`. Qualtrics drops a second SMS
-/// with the same wording to the same number within 24 hours; `decorate_message` puts
-/// the uniqueness tag before the survey-link piped text so the copies differ.
-/// `multi_administration_warning` still asks the user to confirm a test send.
+/// Every slot of every day sends through `input.survey`.
 pub fn build_contact_plan<R: Rng + ?Sized>(
     input: &PlanInputs,
     now: DateTime<Utc>,
@@ -428,24 +425,6 @@ pub fn build_contact_plan<R: Rng + ?Sized>(
     }
 
     (items, skipped)
-}
-
-/// What to tell the user when a plan asks for more than one invitation a day.
-///
-/// Qualtrics' documented rule is the same SMS wording to the same number within 24 hours,
-/// not one invitation per survey per contact. A tag after the piped link was not enough;
-/// `decorate_message` now places it before the link. The warning stays so a test send is
-/// confirmed before a whole list is enrolled.
-pub fn multi_administration_warning(max_slots_per_day: usize) -> Option<String> {
-    (max_slots_per_day > 1).then(|| {
-        format!(
-            "Some participants are scheduled for {max_slots_per_day} invitations a day. \
-             Qualtrics drops a second SMS with the same wording to the same number within \
-             24 hours. Each SMS now carries a unique tag before the survey link so the \
-             copies differ — send a test participant first and confirm every slot arrives \
-             before enrolling the rest of the list."
-        )
-    })
 }
 
 fn parse_start_date(raw: &str) -> Option<NaiveDate> {

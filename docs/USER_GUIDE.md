@@ -553,10 +553,6 @@ The table has one row per invitation: who, what number or address, SMS or email,
 which slot, the local time in *their* time zone, the same moment in UTC, and when the link
 expires.
 
-A yellow banner above the table warns when the plan asks for more than one invitation a day
-— see [More than one invitation a day](#more-than-one-invitation-a-day) before you enrol a
-whole list.
-
 Underneath, two more cards appear when relevant:
 
 <!-- screenshot pending: ![The skipped participants and dropped times cards](images/13-schedule-skipped.png) -->
@@ -730,9 +726,6 @@ QualSched inserts a short random tag *before* the survey-link piped text on each
 the copies differ. A tag after the link is ignored. Email still gets a trailing tag.
 Confirm on a test number that every slot of the day actually arrives before you enrol
 the rest of the list.
-
-The Schedule screen still shows a yellow warning when a plan has more than one invitation
-a day, so you see the 24-hour rule before you send.
 
 > **Upgrading from an earlier version?** A previous release tried to work around this by
 > cloning your survey into `-c1`, `-c2` and so on and sending each administration of the day
