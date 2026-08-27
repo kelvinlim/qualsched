@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tick } from "svelte";
+
   import * as api from "../lib/api";
   import { matchesQuery } from "../lib/filter";
   import { app } from "../lib/state.svelte";
@@ -63,6 +65,7 @@
   let confirmRemove = $state(false);
   let sort = $state<{ key: string; dir: SortDir }>({ key: "name", dir: "asc" });
   let query = $state("");
+  let editorPanel = $state<HTMLDivElement | null>(null);
 
   $effect(() => {
     if (app.hasProject) void load();
@@ -147,6 +150,24 @@
   function askRemove(contact: ContactView) {
     pendingRemoval = contact;
     confirmRemove = true;
+  }
+
+  /** Same path as the Edit control: populate the existing form and bring it into view. */
+  async function openEditor(contact: ContactView) {
+    editor = contact;
+    await tick();
+    editorPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+    editorPanel
+      ?.querySelector<HTMLElement>("input, select, textarea")
+      ?.focus({ preventScroll: true });
+  }
+
+  function onRowClick(event: MouseEvent, contact: ContactView) {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    // Checkboxes, Edit, and Remove keep their own actions.
+    if (target.closest("button, input, a, select, textarea, label")) return;
+    void openEditor(contact);
   }
 
   async function remove() {
@@ -284,12 +305,14 @@
 </div>
 
 {#if editor !== null}
-  <ContactEditor
-    contact={editor === "new" ? null : editor}
-    {busy}
-    onsave={save}
-    oncancel={() => (editor = null)}
-  />
+  <div bind:this={editorPanel}>
+    <ContactEditor
+      contact={editor === "new" ? null : editor}
+      {busy}
+      onsave={save}
+      oncancel={() => (editor = null)}
+    />
+  </div>
 {/if}
 
 {#if sorted.length === 0 && !loading}
@@ -332,7 +355,14 @@
       </thead>
       <tbody>
         {#each sorted as contact (contact.contactId)}
-          <tr>
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <tr
+            class="contact-row"
+            class:editing={editor !== "new" && editor?.contactId === contact.contactId}
+            title="Edit this participant"
+            onclick={(event) => onRowClick(event, contact)}
+          >
             <td>
               <input
                 type="checkbox"
@@ -356,7 +386,7 @@
               {/if}
             {/each}
             <td>
-              <button class="link" onclick={() => (editor = contact)}>Edit</button>
+              <button class="link" onclick={() => void openEditor(contact)}>Edit</button>
               <button
                 class="link"
                 style="color: var(--danger);"
@@ -383,3 +413,13 @@
   danger
   onconfirm={remove}
 />
+
+<style>
+  tr.contact-row {
+    cursor: pointer;
+  }
+  tr.contact-row.editing,
+  tr.contact-row.editing:hover {
+    background: var(--accent-soft);
+  }
+</style>

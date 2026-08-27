@@ -514,7 +514,8 @@ Press **Refresh** to re-read from Qualtrics if a colleague has been editing the 
 <!-- screenshot pending: ![The participant editor open in edit mode](images/11-contact-editor.png) -->
 *Who they are, and when they should be prompted.*
 
-**+ Add participant**, or **Edit** on any row.
+**+ Add participant**, or click any participant row (or **Edit**). The editor opens
+above the list and the page jumps to it.
 
 *Who they are* needs at least one of name, email address or phone number. Phone numbers
 need the country code.
