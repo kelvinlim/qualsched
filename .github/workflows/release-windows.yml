@@ -1,4 +1,4 @@
-name: Release (Windows + macOS)
+name: Release (Windows + macOS + Linux)
 
 on:
   push:
@@ -56,7 +56,7 @@ jobs:
     timeout-minutes: 60
 
     strategy:
-      # One platform failing should not cancel the other; a partial result is still
+      # One platform failing should not cancel the others; a partial result is still
       # worth downloading, and the release job below refuses to publish either way.
       fail-fast: false
       matrix:
@@ -71,6 +71,13 @@ jobs:
           - os: macos-latest
             artifact: QualSched-macos-arm64
             bundle: src-tauri/target/release/bundle/dmg/*.dmg
+          - os: ubuntu-latest
+            artifact: QualSched-linux-x64
+            # AppImage plus .deb. Both globs must match: a missing .deb would
+            # otherwise still upload the AppImage and look successful.
+            bundle: |
+              src-tauri/target/release/bundle/appimage/*.AppImage
+              src-tauri/target/release/bundle/deb/*.deb
 
     steps:
       - uses: actions/checkout@v4
@@ -87,6 +94,42 @@ jobs:
             echo "::error::Expected an arm64 runner for the Apple Silicon build, got $arch."
             exit 1
           fi
+
+      # ubuntu-latest is x86_64 today. Fail loudly if GitHub ever repoints the
+      # label at arm64, rather than silently shipping an aarch64 build as "x64".
+      - name: Confirm Linux x64 runner
+        if: runner.os == 'Linux'
+        run: |
+          arch=$(uname -m)
+          echo "runner architecture: $arch"
+          if [ "$arch" != "x86_64" ]; then
+            echo "::error::Expected an x86_64 runner for the Linux x64 build, got $arch."
+            exit 1
+          fi
+
+      # Tauri 2 prerequisites (webkit2gtk 4.1, ayatana indicator, rsvg, …) plus
+      # patchelf / xdg-utils / file, which the AppImage bundler needs.
+      # https://v2.tauri.app/start/prerequisites/
+      # https://v2.tauri.app/distribute/pipelines/github/
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            pkg-config \
+            patchelf \
+            xdg-utils
+          # 24.04 renamed this to libfuse2t64; 22.04 still ships libfuse2.
+          sudo apt-get install -y libfuse2t64 || sudo apt-get install -y libfuse2
 
       - uses: actions/setup-node@v4
         with:
@@ -118,6 +161,17 @@ jobs:
       - name: Build installer
         if: runner.os == 'Windows'
         run: npm run tauri build
+
+      # Unsigned is fine for Linux. NO_STRIP skips linuxdeploy's bundled strip,
+      # which is too old for the .relr.dyn sections Ubuntu 24.04 / glibc emit
+      # and otherwise aborts the AppImage step. APPIMAGE_EXTRACT_AND_RUN avoids
+      # needing /dev/fuse on the runner.
+      - name: Build installer
+        if: runner.os == 'Linux'
+        run: npm run tauri build
+        env:
+          NO_STRIP: 'true'
+          APPIMAGE_EXTRACT_AND_RUN: '1'
 
       # The notary service needs the App Store Connect key as a file on disk.
       - name: Write App Store Connect API key
@@ -168,6 +222,13 @@ jobs:
           Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe
           Get-ChildItem src-tauri/target/release/bundle/msi/*.msi
 
+      - name: Confirm Linux AppImage and deb exist
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          ls src-tauri/target/release/bundle/appimage/*.AppImage
+          ls src-tauri/target/release/bundle/deb/*.deb
+
       # Runs on every trigger, so a manual dispatch still yields a downloadable build.
       - name: Upload installer as workflow artifact
         uses: actions/upload-artifact@v4
@@ -177,9 +238,9 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  # Publishing from a single job, after both builds succeed, keeps two runners from
-  # racing to create the same release — and means a tag never yields a release that
-  # is missing one platform's installer.
+  # Publishing from a single job, after all platform builds succeed, keeps the
+  # runners from racing to create the same release — and means a tag never
+  # yields a release that is missing one platform's installer.
   release:
     needs: build
     if: github.ref_type == 'tag'
@@ -229,3 +290,13 @@ jobs:
 
             The app is Developer ID signed and notarized by Apple, so it opens
             normally with no security warnings.
+
+            ## Linux (x64)
+
+            Download the `QualSched_*_amd64.AppImage` for a portable binary, or
+            the `.deb` to install on Debian or Ubuntu.
+
+            x64 only — it will not run on ARM. Neither package is code-signed.
+
+            The AppImage is portable: mark it executable (`chmod +x`) and run
+            it. The `.deb` is for Debian and Ubuntu (`sudo dpkg -i`).
