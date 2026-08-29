@@ -1,0 +1,587 @@
+:root {
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --border: #d8dce3;
+  --text: #1c2027;
+  --muted: #656d7a;
+  --accent: #2f6feb;
+  --accent-soft: #e8f0fe;
+  --danger: #c0392b;
+  --danger-soft: #fdecea;
+  --ok: #1e7a45;
+  --ok-soft: #e6f4ec;
+  --warn: #8a6100;
+  --warn-soft: #fdf3dc;
+  --radius: 6px;
+
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16191d;
+    --panel: #1e2228;
+    --border: #333941;
+    --text: #e6e8ec;
+    --muted: #9aa3b0;
+    --accent: #63a0ff;
+    --accent-soft: #22314a;
+    --danger: #ef7a6d;
+    --danger-soft: #3a2320;
+    --ok: #6bcf95;
+    --ok-soft: #1f3329;
+    --warn: #e5bb63;
+    --warn-soft: #352d19;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+h1 {
+  font-size: 1.35rem;
+  margin: 0 0 0.25rem;
+}
+h2 {
+  font-size: 1.05rem;
+  margin: 0 0 0.75rem;
+}
+h3 {
+  font-size: 0.9rem;
+  margin: 1.25rem 0 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+p {
+  margin: 0 0 0.75rem;
+  line-height: 1.5;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 230px 1fr;
+  height: 100vh;
+}
+
+.sidebar {
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  padding: 1rem 0.75rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.sidebar .brand {
+  font-weight: 600;
+  font-size: 1.05rem;
+  padding: 0 0.5rem 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sidebar .brand .logo {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.35rem;
+  flex-shrink: 0;
+}
+
+.sidebar .brand .name {
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar .brand .version {
+  font-weight: 400;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.sidebar button.nav {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.92rem;
+}
+.sidebar button.nav:hover:not(:disabled) {
+  background: var(--bg);
+}
+.sidebar button.nav.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+.sidebar button.nav:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+/* Pinned to the foot of the sidebar: it is about the app itself rather than a
+   step in running a study. */
+.sidebar .session {
+  margin-top: auto;
+  padding: 0.6rem 0.5rem 0.35rem;
+  border-top: 1px solid var(--border);
+}
+.sidebar .session .hint {
+  margin: 0 0 0.15rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar button.nav.whats-new {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+main {
+  overflow-y: auto;
+  padding: 1.5rem 2rem 3rem;
+}
+
+/* Which account and profile every screen is acting on. Replaced the sidebar's context
+   block, which sat below the nav where nobody was looking. */
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-bottom: 0.75rem;
+}
+/* button.link underlines permanently, which is too heavy for chrome that is on screen
+   all the time, and its padding knocks the crumbs out of line with the separator. */
+.breadcrumb button.link {
+  padding: 0;
+  text-decoration: none;
+}
+.breadcrumb button.link:hover {
+  text-decoration: underline;
+}
+.breadcrumb .sep {
+  color: var(--border);
+}
+
+.subtitle {
+  color: var(--muted);
+  margin-bottom: 1.25rem;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+label {
+  display: block;
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-bottom: 0.25rem;
+}
+
+input[type="text"],
+input[type="number"],
+input[type="password"],
+input[type="date"],
+input[type="search"],
+input[type="email"],
+input[type="file"],
+select,
+textarea {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+textarea {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.field {
+  margin-bottom: 0.85rem;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 1rem;
+}
+.grid3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0 1rem;
+}
+
+button {
+  font: inherit;
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+button.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+button.link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  padding: 0.2rem;
+  text-decoration: underline;
+}
+
+.row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.row.end {
+  justify-content: flex-end;
+}
+.spacer {
+  flex: 1;
+}
+
+/* Table filter box. The shared input rule gives every input the full row width, which is
+   wrong for a control sharing a toolbar; `width: auto` would leave it at the webview's own
+   default, which differs across the three we ship on. */
+.row input.search {
+  width: 16rem;
+  max-width: 100%;
+  flex: 0 0 auto;
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+.checkbox input {
+  width: auto;
+  margin: 0;
+}
+.checkbox label {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.hint {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 0.25rem;
+  line-height: 1.45;
+}
+
+.banner {
+  border-radius: var(--radius);
+  padding: 0.6rem 0.8rem;
+  margin-bottom: 0.85rem;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  border: 1px solid transparent;
+}
+.banner.error {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.banner.ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+  border-color: var(--ok);
+}
+.banner.warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.banner ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.scroll-x {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+th,
+td {
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+}
+tbody tr:hover {
+  background: var(--bg);
+}
+
+/* Sortable column header: a real button so it is keyboard reachable, styled to read
+   as part of the header row rather than as a control. */
+th button.sort {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+th button.sort:hover {
+  color: var(--accent);
+}
+th button.sort:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The inactive arrow holds its space so headers do not shift when sorting changes. */
+th button.sort .arrow {
+  font-size: 0.65em;
+  opacity: 0;
+}
+th button.sort:hover .arrow {
+  opacity: 0.4;
+}
+th button.sort .arrow.on {
+  opacity: 1;
+  color: var(--accent);
+}
+td.wrap {
+  white-space: normal;
+  min-width: 16rem;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.badge.ok {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.badge.muted {
+  background: var(--bg);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+.badge.update {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.badge.warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.empty {
+  color: var(--muted);
+  padding: 1.5rem 0;
+  text-align: center;
+}
+
+.list-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 0.35rem;
+  cursor: pointer;
+  background: var(--panel);
+}
+.list-item.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.mono {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+dialog {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  padding: 1.25rem;
+  max-width: 34rem;
+  width: 90vw;
+}
+dialog::backdrop {
+  background: rgb(0 0 0 / 45%);
+}
+/* Bodies that append a warning separate it with a blank line; without this it would
+   collapse into one wall of text. Bodies with no newlines are unaffected. */
+dialog p {
+  white-space: pre-line;
+}
+
+progress {
+  width: 100%;
+  height: 0.6rem;
+}
+
+/* User guide prose: the guide renders GitHub-flavored markdown, so headings, tables
+   and code need document styling rather than the app's data-grid and eyebrow rules. */
+.guide {
+  max-width: 44rem;
+}
+.guide h1 {
+  margin-bottom: 0.75rem;
+}
+.guide h2 {
+  font-size: 1.15rem;
+  margin: 1.75rem 0 0.6rem;
+}
+.guide h3 {
+  font-size: 1rem;
+  margin: 1.25rem 0 0.4rem;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text);
+}
+.guide :is(h1, h2, h3, h4) {
+  scroll-margin-top: 0.75rem;
+}
+.guide a {
+  color: var(--accent);
+}
+.guide li {
+  line-height: 1.5;
+  margin-bottom: 0.25rem;
+}
+.guide code {
+  background: var(--accent-soft);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  font-size: 0.85em;
+}
+.guide pre {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 0.9rem;
+  overflow-x: auto;
+}
+.guide pre code {
+  background: none;
+  padding: 0;
+}
+.guide blockquote {
+  margin: 0 0 0.75rem;
+  padding: 0.1rem 0 0.1rem 0.9rem;
+  border-left: 3px solid var(--accent);
+  color: var(--muted);
+}
+.guide hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.75rem 0;
+}
+.guide table {
+  width: auto;
+  font-size: 0.9rem;
+}
+.guide th,
+.guide td {
+  white-space: normal;
+  vertical-align: top;
+}
+.guide th {
+  position: static;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: inherit;
+  color: var(--text);
+  background: none;
+}
+.guide tbody tr:hover {
+  background: none;
+}
+.guide img {
+  display: none;
+}

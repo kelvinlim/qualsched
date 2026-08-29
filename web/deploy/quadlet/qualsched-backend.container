@@ -1,0 +1,36 @@
+# QualSched Web backend (FastAPI) — Quadlet container unit.
+# Build: sudo podman build -t localhost/qualsched-backend:latest /home/kolim/Projects/qualsched/web/backend
+# Install: copy to /etc/containers/systemd/, then `sudo systemctl daemon-reload && sudo systemctl start qualsched-backend.service`
+# Logs: `sudo journalctl -u qualsched-backend.service -f`
+#
+# No MariaDB container on lnpitask — DATABASE_URL in .env points at external
+# MariaDB on cnc3.med.umn.edu, schema/user `qualsched` (not `wearable_hub`).
+# No scheduler unit: backend + frontend only. (backend/app/scheduler.py is
+# in-process plan math, not a long-running systemd service.)
+
+[Unit]
+Description=QualSched Web backend (FastAPI on host 127.0.0.1:8050 -> container :8000)
+Wants=network-online.target
+After=network-online.target
+Requires=qualsched-network.service
+After=qualsched-network.service
+
+[Container]
+ContainerName=qualsched-backend
+Image=localhost/qualsched-backend:latest
+# Path must match the real host checkout (wearable-hub analogue of
+# /home/kolim/Projects/wearable-hub/.env). Edit if the tree lives elsewhere.
+EnvironmentFile=/home/kolim/Projects/qualsched/web/.env
+# tictech already owns 127.0.0.1:8030/8040; wearable is 8010/8020.
+PublishPort=127.0.0.1:8050:8000
+Network=qualsched.network
+# DNS alias so the frontend container's nginx (proxy_pass http://backend:8000) resolves.
+NetworkAlias=backend
+
+[Service]
+Restart=on-failure
+# First start waits on cnc3 then runs `alembic upgrade head` in entrypoint.sh.
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target default.target

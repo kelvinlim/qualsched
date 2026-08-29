@@ -1,0 +1,11 @@
+# Quadlet network for the QualSched Web stack.
+# Quadlet translates this to `qualsched-network.service`; podman creates the
+# underlying network as `systemd-qualsched`. Containers attach via `Network=qualsched.network`.
+
+[Unit]
+Description=Network for QualSched Web containers
+
+[Network]
+
+[Install]
+WantedBy=multi-user.target default.target

@@ -1,0 +1,64 @@
+# FastAPI backend + Svelte frontend + local-only MariaDB sidecar.
+# Host ports chosen to avoid wearable-hub (8010/8020) and /qualtrics_dashboard on :8000.
+# Access: frontend http://localhost:8040  backend http://localhost:8030
+#
+# The `db` service is for offline local Docker only. Production on lnpitask.umn.edu
+# uses an external MariaDB at cnc3.med.umn.edu (DATABASE_URL in .env) — no db
+# container, same as wearable-hub compose. Do not reuse the wearable_hub schema;
+# provision a new `qualsched` schema/user on cnc3.
+#
+# Production on lnpitask uses Quadlets + host nginx (see deploy/), not this file.
+# Path prefix /qualsched, host ports 8050/8060 (tictech already uses 8030/8040). Do not occupy /wearable.
+
+services:
+  db:
+    image: mariadb:11
+    environment:
+      MARIADB_DATABASE: ${DB_NAME:-qualsched}
+      MARIADB_USER: ${DB_USER:-qualsched}
+      MARIADB_PASSWORD: ${DB_PASSWORD:-qualsched}
+      MARIADB_ROOT_PASSWORD: ${DB_PASSWORD:-qualsched}
+    ports:
+      # Host 3306 is often already taken; this is local-only.
+      - "3307:3306"
+    volumes:
+      - qualsched-db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build: ./backend
+    env_file:
+      - .env
+    environment:
+      # Compose sidecar, not cnc3. On lnpitask these overrides are absent and
+      # .env points at mysql+pymysql://…@cnc3.med.umn.edu:3306/qualsched.
+      DATABASE_URL: mysql+pymysql://${DB_USER:-qualsched}:${DB_PASSWORD:-qualsched}@db:3306/${DB_NAME:-qualsched}
+      DB_WAIT_HOST: db
+      DB_WAIT_PORT: 3306
+    ports:
+      - "8030:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    # Svelte SPA served by nginx, which reverse-proxies /api, /auth, /health to the backend
+    # (same-origin, no CORS). Access at http://localhost:8040.
+    # Build from the monorepo root so the shared `ui/` package is available.
+    # Override the image default (VITE_BASE=/qualsched/) so local compose stays at `/`.
+    build:
+      context: ..
+      dockerfile: web/frontend/Dockerfile
+      args:
+        VITE_BASE: /
+    ports:
+      - "8040:80"
+    depends_on:
+      - backend
+
+volumes:
+  qualsched-db:

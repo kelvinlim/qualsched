@@ -1,0 +1,21 @@
+.env
+secrets/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+node_modules/
+dist/
+.DS_Store
+
+# vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# local sqlite
+*.db
+*.sqlite
+*.sqlite3
