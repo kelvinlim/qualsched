@@ -1,0 +1,15 @@
+# Used when the frontend image is built from the repo root.
+node_modules
+**/node_modules
+**/dist
+**/.vite
+.git
+desktop/src-tauri/target
+**/.env
+**/.env.*
+!**/.env.sample
+web/backend
+web/deploy
+**/.pytest_cache
+**/.ruff_cache
+**/__pycache__

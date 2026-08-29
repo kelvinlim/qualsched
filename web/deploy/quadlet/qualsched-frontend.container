@@ -1,0 +1,29 @@
+# QualSched Web frontend (Vite/Svelte build served by nginx) — Quadlet container unit.
+# Build from the monorepo root so the shared ui/ package is included:
+# sudo podman build -t localhost/qualsched-frontend:latest \
+#   -f /home/kolim/Projects/qualsched/web/frontend/Dockerfile \
+#   /home/kolim/Projects/qualsched
+# The container's internal nginx proxies /api /auth /health to backend:8000
+# over the qualsched.network (the NetworkAlias on qualsched-backend makes "backend" resolve).
+# Host nginx strips /qualsched/ before traffic reaches this container (see deploy/nginx/qualsched.conf).
+# Install: copy to /etc/containers/systemd/, then `sudo systemctl daemon-reload && sudo systemctl start qualsched-frontend.service`
+
+[Unit]
+Description=QualSched Web frontend (Vite/nginx on host 127.0.0.1:8060 -> container :80)
+Wants=network-online.target
+After=network-online.target
+Requires=qualsched-network.service
+After=qualsched-network.service qualsched-backend.service
+
+[Container]
+ContainerName=qualsched-frontend
+Image=localhost/qualsched-frontend:latest
+# tictech already owns 127.0.0.1:8030/8040; wearable is 8010/8020.
+PublishPort=127.0.0.1:8060:80
+Network=qualsched.network
+
+[Service]
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target default.target

@@ -1,0 +1,31 @@
+{
+  "name": "@qualsched/ui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared QualSched Svelte screens and components",
+  "type": "module",
+  "exports": {
+    "./app.css": "./app.css",
+    "./screens/*": "./screens/*",
+    "./components/*": "./components/*",
+    "./lib/*": "./lib/*"
+  },
+  "scripts": {
+    "check": "svelte-check --tsconfig ./tsconfig.json"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "marked": "^18.0.7",
+    "marked-gfm-heading-id": "^4.1.4"
+  },
+  "peerDependencies": {
+    "svelte": "^5.0.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5.0.0",
+    "@tsconfig/svelte": "^5.0.4",
+    "svelte": "^5.0.0",
+    "svelte-check": "^4.0.0",
+    "typescript": "~5.6.2"
+  }
+}

@@ -1,0 +1,46 @@
+# QualSched Web backend — FastAPI + SQLAlchemy + Alembic.
+# Version must stay in sync with frontend/package.json.
+
+[project]
+name = "qualsched-web-backend"
+version = "0.1.0"
+description = "QualSched Web backend — Qualtrics EMA scheduling for researchers. Participant PHI stays in Qualtrics."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "sqlalchemy>=2.0.36",
+    "pymysql>=1.1",
+    "alembic>=1.14",
+    "pydantic>=2.10",
+    "pydantic-settings>=2.7",
+    "cryptography>=44.0",
+    "google-auth>=2.37",
+    "requests>=2.32",
+    "httpx>=0.28",
+    "python-multipart>=0.0.18",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.8",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# So `from tests.test_accounts import …` works when pytest is run from backend/.
+pythonpath = ["."]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]

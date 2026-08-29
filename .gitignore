@@ -12,7 +12,21 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
-# env / secrets
+# env / secrets — web/.env is the lnpitask file; never commit it
 .env
 .env.*
+!.env.sample
 !.env.example
+
+# python (web/backend)
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+*.db
+*.sqlite
+*.sqlite3
+secrets/

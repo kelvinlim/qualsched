@@ -1,0 +1,29 @@
+{
+  "extends": "@tsconfig/svelte/tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "checkJs": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "skipLibCheck": true,
+    "strict": true,
+    "paths": {
+      "@qualsched/ui/*": ["../../ui/*"],
+      "@qualsched/api": ["./src/lib/api.ts"],
+      "@qualsched/changelog": ["./CHANGELOG.md"],
+      "@qualsched/guide": ["./docs/USER_GUIDE.md"]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.js",
+    "src/**/*.svelte",
+    "../../ui/**/*.ts",
+    "../../ui/**/*.svelte",
+    "vite.config.ts"
+  ]
+}

@@ -1,0 +1,4 @@
+Imported kelvinlim/qualsched-web main at 1a2e6e9a814b
+(Add public Privacy and Terms pages for Google OAuth branding.)
+Do not nest a .git here. The standalone repo stays published; a follow-up
+README there will point at this monorepo.
