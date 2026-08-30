@@ -194,6 +194,7 @@
             (await cache.directories(draft!.id)).map((d) => ({
               id: d.id,
               label: `${d.name} (${d.id})`,
+              name: d.name,
             }))}
         />
         <ApiDropdown
@@ -204,6 +205,7 @@
             (await cache.libraries(draft!.id)).map((d) => ({
               id: d.id,
               label: `${d.name} (${d.id})`,
+              name: d.name,
             }))}
         />
       </div>

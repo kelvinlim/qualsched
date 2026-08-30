@@ -1,9 +1,12 @@
 <script lang="ts">
+  import { sortQualtricsOptions } from "../lib/option-sort";
   import { errorMessage } from "../lib/types";
 
   interface Option {
     id: string;
     label: string;
+    /** Qualtrics name or description; used for sort order, not the displayed label. */
+    name?: string;
   }
 
   let {
@@ -31,7 +34,7 @@
     loading = true;
     error = "";
     try {
-      options = await loader();
+      options = sortQualtricsOptions(await loader());
       loaded = true;
     } catch (e) {
       error = errorMessage(e);
