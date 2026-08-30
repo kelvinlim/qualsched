@@ -110,6 +110,16 @@ mod tests {
     #[test]
     fn older_versions_are_not_newer() {
         assert!(!is_newer("0.1.7", "0.1.8"));
+        // GitHub /releases/latest can lag the running app (failed installer
+        // workflow). An older published tag must not advertise as an update.
+        assert!(!is_newer("0.1.12", "0.2.0"));
+    }
+
+    #[test]
+    fn equal_and_newer_against_0_2_0() {
+        assert!(!is_newer("0.2.0", "0.2.0"));
+        assert!(is_newer("0.2.1", "0.2.0"));
+        assert!(is_newer("v0.3.0", "0.2.0"));
     }
 
     #[test]
