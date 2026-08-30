@@ -2,6 +2,12 @@
 
 All notable changes to QualSched are documented in this file.
 
+## [0.2.0] - 2026-08-30
+
+### Changed
+- First monorepo release: shared `ui/`, desktop Tauri, and QualSched Web
+  now ship under one version. Desktop was 0.1.12; web and ui were 0.1.0.
+
 ## [0.1.12] - 2026-08-27
 
 ### Changed

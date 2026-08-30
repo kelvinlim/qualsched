@@ -34,16 +34,26 @@ jobs:
           pkg=$(node -p "require('./desktop/package.json').version")
           conf=$(node -p "require('./desktop/src-tauri/tauri.conf.json').version")
           cargo_v=$(grep -m1 '^version = ' desktop/src-tauri/Cargo.toml | cut -d'"' -f2)
-          echo "package.json      $pkg"
-          echo "tauri.conf.json   $conf"
-          echo "Cargo.toml        $cargo_v"
+          ui_v=$(node -p "require('./ui/package.json').version")
+          web_fe=$(node -p "require('./web/frontend/package.json').version")
+          web_be=$(grep -m1 '^version = ' web/backend/pyproject.toml | cut -d'"' -f2)
+          echo "desktop/package.json          $pkg"
+          echo "desktop tauri.conf.json       $conf"
+          echo "desktop Cargo.toml            $cargo_v"
+          echo "ui/package.json               $ui_v"
+          echo "web/frontend/package.json     $web_fe"
+          echo "web/backend/pyproject.toml    $web_be"
           if [ "$pkg" != "$conf" ] || [ "$pkg" != "$cargo_v" ]; then
-            echo "::error::Version mismatch between the three manifests."
+            echo "::error::Version mismatch between the three desktop manifests."
+            exit 1
+          fi
+          if [ "$pkg" != "$ui_v" ] || [ "$pkg" != "$web_fe" ] || [ "$pkg" != "$web_be" ]; then
+            echo "::error::Version mismatch: ui/ and web/ must match desktop $pkg."
             exit 1
           fi
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             tag="${GITHUB_REF_NAME#v}"
-            echo "git tag           $tag"
+            echo "git tag                       $tag"
             if [ "$tag" != "$pkg" ]; then
               echo "::error::Tag ${GITHUB_REF_NAME} does not match version $pkg."
               exit 1

@@ -17,6 +17,12 @@ All notable changes to QualSched Web are documented in this file.
   `fitbitdata-499001` (Testing 100-user cap + Health scopes). Console steps in
   `deploy/README.md` §4.
 
+## [0.2.0] - 2026-08-30
+
+### Changed
+- First monorepo release with desktop QualSched. Shared `ui/`, desktop, and
+  web now use the same version. Web was 0.1.0.
+
 ## [0.1.0] - 2026-08-28
 
 ### Added

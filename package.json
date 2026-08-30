@@ -1,5 +1,6 @@
 {
   "name": "qualsched",
+  "version": "0.2.0",
   "private": true,
   "description": "QualSched monorepo: shared Svelte UI, Tauri desktop app, and QualSched Web",
   "workspaces": [
