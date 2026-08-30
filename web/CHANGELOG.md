@@ -4,6 +4,8 @@ All notable changes to QualSched Web are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-30
+
 ### Added
 - Public Privacy Policy and Terms of Service pages (`/privacy`, `/terms`) for
   Google OAuth branding. They render without sign-in. Console URLs and “skip the
@@ -12,6 +14,8 @@ All notable changes to QualSched Web are documented in this file.
   screen, sidebar, and browser tab.
 
 ### Changed
+- First monorepo release with desktop QualSched. Shared `ui/`, desktop, and
+  web now use the same version. Web was 0.1.0.
 - Researcher Google OAuth is a **dedicated** QualSched Cloud project (External,
   In production, openid/email/profile only). Do not reuse wearable-hub
   `fitbitdata-499001` (Testing 100-user cap + Health scopes). Console steps in
