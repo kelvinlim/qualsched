@@ -44,6 +44,9 @@
     error = "";
     try {
       preview = await api.previewLegacyImport(yamlText, tokenText || undefined, yamlName);
+      const selected = app.selectedAccountId;
+      targetAccountId =
+        selected && app.config.accounts.some((a) => a.id === selected) ? selected : "";
     } catch (e) {
       error = errorMessage(e);
       preview = null;
