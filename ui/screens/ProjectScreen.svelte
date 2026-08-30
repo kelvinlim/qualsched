@@ -1,6 +1,7 @@
 <script lang="ts">
   import * as api from "@qualsched/api";
   import * as cache from "../lib/cache.svelte";
+  import { withAddedProject } from "../lib/project";
   import { app, newProject } from "../lib/state.svelte";
   import { errorMessage, type Project } from "../lib/types";
   import ApiDropdown from "../components/ApiDropdown.svelte";
@@ -15,6 +16,10 @@
   let messagePreview = $state("");
 
   $effect(() => {
+    const account = app.account;
+    if (account && account.projects.length > 0 && !app.project) {
+      app.select(account.id, account.projects[0].id);
+    }
     const project = app.project;
     draft = project ? $state.snapshot(project) : null;
     error = "";
@@ -78,8 +83,9 @@
   function addProject() {
     if (!app.account) return;
     const project = newProject();
-    app.select(app.account.id, project.id);
-    draft = project;
+    const accountId = app.account.id;
+    app.apply(withAddedProject(app.config, accountId, project));
+    app.select(accountId, project.id);
   }
 
   async function save() {
@@ -151,7 +157,9 @@
 
     <div style="flex: 1; min-width: 0;">
       {#if !draft}
-        <div class="empty">No survey profile yet. Add one to get started.</div>
+        {#if app.account.projects.length === 0}
+          <div class="empty">Choose a profile from the list, or add one</div>
+        {/if}
       {:else}
         {#if error}<div class="banner error">{error}</div>{/if}
         {#if notice}<div class="banner ok">{notice}</div>{/if}
