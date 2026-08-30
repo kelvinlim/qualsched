@@ -25,5 +25,6 @@
     "../../ui/**/*.ts",
     "../../ui/**/*.svelte",
     "vite.config.ts"
-  ]
+  ],
+  "exclude": ["../../ui/**/*.test.ts"]
 }

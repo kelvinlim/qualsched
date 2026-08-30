@@ -29,6 +29,9 @@ jobs:
       - name: Typecheck
         run: npm run check
 
+      - name: Version comparison tests
+        run: npm run test --workspace @qualsched/ui
+
       # The v0.2.0 release failed here: svelte-check (and `vite` in dev) never
       # exercised Vite's production alias matcher against `ui/` `?raw` imports.
       - name: Build desktop frontend

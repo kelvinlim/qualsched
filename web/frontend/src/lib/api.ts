@@ -29,6 +29,7 @@ import type {
   TestResult,
   UpdateInfo,
 } from "@qualsched/ui/lib/types";
+import { isNewerVersion } from "@qualsched/ui/lib/version";
 
 /** Copy that differs from the desktop app (server encryption vs keychain). */
 export const platformCopy = {
@@ -359,7 +360,7 @@ export const checkForUpdate = async (): Promise<UpdateInfo> => {
     return {
       currentVersion,
       latestVersion,
-      updateAvailable: latestVersion !== currentVersion,
+      updateAvailable: isNewerVersion(latestVersion, currentVersion),
       releaseNotes: rel.body || "",
       releaseUrl: rel.html_url || "https://github.com/kelvinlim/qualsched/releases",
     };

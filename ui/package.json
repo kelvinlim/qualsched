@@ -11,7 +11,8 @@
     "./lib/*": "./lib/*"
   },
   "scripts": {
-    "check": "svelte-check --tsconfig ./tsconfig.json"
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning lib/version.test.ts"
   },
   "license": "MIT",
   "dependencies": {
