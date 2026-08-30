@@ -1,5 +1,8 @@
 import * as api from "@qualsched/api";
+import { isUsableAccount } from "./account";
 import type { Account, AppConfig, Project } from "./types";
+
+export { isUsableAccount } from "./account";
 
 export type ScreenName =
   | "accounts"
@@ -25,6 +28,15 @@ class AppStore {
 
   get project(): Project | null {
     return this.account?.projects.find((p) => p.id === this.selectedProjectId) ?? null;
+  }
+
+  /**
+   * True when the selected account is a usable Qualtrics login (has a data
+   * center). A blank "+ Add account" draft is selected (`app.account` is set)
+   * but does not count until Save writes a data center.
+   */
+  get hasAccount(): boolean {
+    return isUsableAccount(this.account);
   }
 
   /** True when a screen that needs both an account and a project can be opened. */
