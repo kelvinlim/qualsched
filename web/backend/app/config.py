@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     # --- App ---
     app_name: str = "QualSched Web"
     # Keep in sync with backend/pyproject.toml + frontend/package.json.
-    app_version: str = "0.2.2"
+    app_version: str = "0.2.3"
     environment: str = "dev"  # dev | prod
 
     # Public URL path prefix the app would be served under on the host (e.g. "/qualsched"

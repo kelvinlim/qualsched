@@ -4,6 +4,12 @@ All notable changes to QualSched Web are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-08-30
+
+### Changed
+- Shared version bump with desktop. What's new download still opens the GitHub
+  release page on web (desktop now offers this computer's installer).
+
 ## [0.2.2] - 2026-08-30
 
 ### Added
