@@ -82,3 +82,48 @@ def test_preview_endpoint(ctx):
     assert r.status_code == 200, r.text
     assert r.json()["account"]["dataCenter"] == "yul1"
     assert r.json()["tokenFound"] is False
+
+
+def test_import_confirm_into_existing_account_adds_profile_only(ctx):
+    """targetAccountId adds the survey profile and leaves the account itself alone."""
+    client, _, _ = ctx
+    existing = {
+        "id": "11111111-1111-1111-1111-111111111111",
+        "name": "kolim-umn",
+        "dataCenter": "yul1",
+        "verifyTls": True,
+        "defaultDirectory": "POOL_existing",
+        "libraryId": "GR_existing",
+        "projects": [],
+    }
+    assert client.post("/api/accounts", json=existing).status_code == 200
+    assert (
+        client.put(
+            f"/api/accounts/{existing['id']}/token", json={"token": "existing-token"}
+        ).status_code
+        == 200
+    )
+
+    preview = parse_config(YAML, "config.yaml")
+    r = client.post(
+        "/api/import/confirm",
+        json={
+            "account": preview.account.model_dump(),
+            "project": preview.project.model_dump(),
+            "token": "must-not-overwrite-existing-token",
+            "targetAccountId": existing["id"],
+        },
+    )
+    assert r.status_code == 200, r.text
+    cfg = r.json()
+    assert len(cfg["accounts"]) == 1
+    account = cfg["accounts"][0]
+    assert account["id"] == existing["id"]
+    assert account["name"] == "kolim-umn"
+    assert account["dataCenter"] == "yul1"
+    assert account["defaultDirectory"] == "POOL_existing"
+    assert account["libraryId"] == "GR_existing"
+    assert [p["name"] for p in account["projects"]] == ["Sleep"]
+    assert account["projects"][0]["surveyId"] == "SV_1"
+    assert "must-not-overwrite-existing-token" not in r.text
+    assert client.get(f"/api/accounts/{existing['id']}/has-token").json() is True
