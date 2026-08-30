@@ -69,6 +69,7 @@ export const forgetSurveyCopies: (
 
 export const listSurveys: (accountId: string) => Promise<IdName[]> = async () => [];
 export const listDirectories: (accountId: string) => Promise<IdName[]> = async () => [];
+export const listLibraries: (accountId: string) => Promise<IdName[]> = async () => [];
 export const listMailingLists: (
   accountId: string,
   directoryId: string,

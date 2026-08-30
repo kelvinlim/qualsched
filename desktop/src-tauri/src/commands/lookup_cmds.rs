@@ -4,6 +4,7 @@ use uuid::Uuid;
 use crate::error::AppResult;
 use crate::qualtrics::{
     directories,
+    libraries,
     messages,
     models::{IdName, MailingListInfo, MessageInfo},
     surveys,
@@ -23,6 +24,15 @@ pub async fn list_directories(
 ) -> AppResult<Vec<IdName>> {
     let client = state.client(account_id).await?;
     directories::list_directories(&client).await
+}
+
+#[tauri::command]
+pub async fn list_libraries(
+    state: State<'_, AppState>,
+    account_id: Uuid,
+) -> AppResult<Vec<IdName>> {
+    let client = state.client(account_id).await?;
+    libraries::list_libraries(&client).await
 }
 
 #[tauri::command]
