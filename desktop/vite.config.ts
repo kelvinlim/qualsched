@@ -10,12 +10,21 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(async () => ({
   plugins: [svelte()],
   resolve: {
-    alias: {
-      "@qualsched/ui": path.resolve(here, "../ui"),
-      "@qualsched/api": path.resolve(here, "src/lib/api.ts"),
-      "@qualsched/changelog": path.resolve(here, "CHANGELOG.md"),
-      "@qualsched/guide": path.resolve(here, "docs/USER_GUIDE.md"),
-    },
+    // Regex finds keep `?raw` (and other queries). Vite's production alias
+    // matcher only accepts an exact string or `alias/…`, so
+    // `import x from "@qualsched/changelog?raw"` from `ui/` failed `vite build`.
+    alias: [
+      { find: "@qualsched/ui", replacement: path.resolve(here, "../ui") },
+      { find: "@qualsched/api", replacement: path.resolve(here, "src/lib/api.ts") },
+      {
+        find: /^@qualsched\/changelog/,
+        replacement: path.resolve(here, "CHANGELOG.md"),
+      },
+      {
+        find: /^@qualsched\/guide/,
+        replacement: path.resolve(here, "docs/USER_GUIDE.md"),
+      },
+    ],
   },
   clearScreen: false,
   server: {
