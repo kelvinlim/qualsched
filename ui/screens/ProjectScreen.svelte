@@ -171,6 +171,7 @@
               (await cache.surveys(app.account!.id)).map((s) => ({
                 id: s.id,
                 label: `${s.name} (${s.id})`,
+                name: s.name,
               }))}
           />
 
@@ -185,6 +186,7 @@
                 (m) => ({
                   id: m.id,
                   label: `${m.name}${m.contactCount === null ? "" : ` — ${m.contactCount} contacts`}`,
+                  name: m.name,
                 }),
               )}
           />
@@ -232,6 +234,7 @@
               (await cache.messages(app.account!.id)).map((m) => ({
                 id: m.id,
                 label: `${m.description} (${m.id})`,
+                name: m.description,
               }))}
           />
 
@@ -243,6 +246,7 @@
               (await cache.messages(app.account!.id)).map((m) => ({
                 id: m.id,
                 label: `${m.description} (${m.id})`,
+                name: m.description,
               }))}
           />
 
