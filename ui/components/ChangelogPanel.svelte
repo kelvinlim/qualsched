@@ -39,12 +39,21 @@
   async function download() {
     if (!update) return;
     openError = "";
+    // Desktop fills downloadUrl with this OS/arch's installer; web leaves it
+    // empty so we keep opening the GitHub release page.
+    const url = update.downloadUrl || update.releaseUrl;
     try {
-      await api.openExternalUrl(update.releaseUrl);
+      await api.openExternalUrl(url);
     } catch (e) {
       openError = e instanceof Error ? e.message : String(e);
     }
   }
+
+  const downloadLabel = $derived(
+    update?.downloadUrl
+      ? update.downloadLabel || "Download"
+      : "Download from GitHub",
+  );
 </script>
 
 <svelte:window
@@ -77,7 +86,7 @@
             <div class="guide notes">{@html notesHtml}</div>
           {/if}
           <button type="button" class="primary" onclick={download}>
-            Download from GitHub
+            {downloadLabel}
           </button>
         {:else if update}
           <p class="headline">You're on the latest version ({update.currentVersion}).</p>

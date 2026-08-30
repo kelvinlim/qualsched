@@ -116,6 +116,9 @@ class UpdateInfo(BaseModel):
     updateAvailable: bool
     releaseNotes: str = ""
     releaseUrl: str = ""
+    # Web is not an installer; empty so the panel opens the GitHub release page.
+    downloadUrl: str = ""
+    downloadLabel: str = ""
 
 
 class ContactView(BaseModel):
