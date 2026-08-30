@@ -153,6 +153,9 @@ export const listSurveys = (accountId: string) =>
 export const listDirectories = (accountId: string) =>
   request<IdName[]>(`/api/accounts/${accountId}/directories`);
 
+export const listLibraries = (accountId: string) =>
+  request<IdName[]>(`/api/accounts/${accountId}/libraries`);
+
 export const listMailingLists = (accountId: string, directoryId: string) =>
   request<MailingListInfo[]>(
     `/api/accounts/${accountId}/mailing-lists?directoryId=${encodeURIComponent(directoryId)}`,

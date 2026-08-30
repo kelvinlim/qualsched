@@ -36,6 +36,26 @@ def list_directories(
     return out
 
 
+@router.get("/libraries", response_model=list[IdName])
+def list_libraries(
+    account_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    try:
+        with _client(db, user, account_id) as client:
+            elements = client.get_elements("libraries")
+    except QualtricsError as exc:
+        raise exc.as_http() from exc
+    out = []
+    for e in elements:
+        lid = e.get("libraryId") or e.get("id")
+        if not lid:
+            continue
+        out.append(
+            IdName(id=lid, name=e.get("libraryName") or e.get("name") or "(unnamed)")
+        )
+    return out
+
+
 @router.get("/surveys", response_model=list[IdName])
 def list_surveys(
     account_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)

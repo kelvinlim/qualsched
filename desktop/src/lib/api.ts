@@ -76,6 +76,9 @@ export const listSurveys = (accountId: string) =>
 export const listDirectories = (accountId: string) =>
   invoke<IdName[]>("list_directories", { accountId });
 
+export const listLibraries = (accountId: string) =>
+  invoke<IdName[]>("list_libraries", { accountId });
+
 export const listMailingLists = (accountId: string, directoryId: string) =>
   invoke<MailingListInfo[]>("list_mailing_lists", { accountId, directoryId });
 

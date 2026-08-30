@@ -51,6 +51,9 @@ export const surveys = (accountId: string, force = false) =>
 export const directories = (accountId: string, force = false) =>
   cache.get<IdName[]>(`${accountId}:directories`, () => api.listDirectories(accountId), force);
 
+export const libraries = (accountId: string, force = false) =>
+  cache.get<IdName[]>(`${accountId}:libraries`, () => api.listLibraries(accountId), force);
+
 export const mailingLists = (accountId: string, directoryId: string, force = false) =>
   cache.get<MailingListInfo[]>(
     `${accountId}:lists:${directoryId}`,

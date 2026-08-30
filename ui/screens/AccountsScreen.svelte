@@ -196,19 +196,16 @@
               label: `${d.name} (${d.id})`,
             }))}
         />
-        <div class="field">
-          <label for="acc-lib">Message library ID</label>
-          <input
-            id="acc-lib"
-            type="text"
-            bind:value={draft.libraryId}
-            placeholder="GR_… or UR_…"
-          />
-          <div class="hint">
-            Holds your invitation templates. A group library starts with GR_, a personal
-            one with UR_.
-          </div>
-        </div>
+        <ApiDropdown
+          label="Message library ID"
+          bind:value={draft.libraryId}
+          hint="Holds your invitation templates. A group library starts with GR_, a personal one with UR_."
+          loader={async () =>
+            (await cache.libraries(draft!.id)).map((d) => ({
+              id: d.id,
+              label: `${d.name} (${d.id})`,
+            }))}
+        />
       </div>
 
       <div class="row">

@@ -42,6 +42,7 @@ pub fn run() {
             commands::config_cmds::test_account,
             commands::lookup_cmds::list_surveys,
             commands::lookup_cmds::list_directories,
+            commands::lookup_cmds::list_libraries,
             commands::lookup_cmds::list_mailing_lists,
             commands::lookup_cmds::list_messages,
             commands::lookup_cmds::get_message_text,
