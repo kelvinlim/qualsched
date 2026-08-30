@@ -235,3 +235,7 @@ export const exportProjectConfig = async (
 
 /** Asks GitHub for the newest published release. Rejects when offline. */
 export const checkForUpdate = () => invoke<UpdateInfo>("check_for_update");
+
+/** Native menu "Check for Updates…" — the shell opens What's new and checks. */
+export const onCheckForUpdates = (handler: () => void): Promise<UnlistenFn> =>
+  listen("updates://check", () => handler());

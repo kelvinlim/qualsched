@@ -2,6 +2,14 @@
 
 All notable changes to QualSched are documented in this file.
 
+## [Unreleased]
+
+### Added
+- Desktop **Check for Updates…** in the application menu (macOS QualSched menu;
+  Help on Windows and Linux). It opens What's new and checks GitHub; when a
+  newer release is out, the download button offers this computer's installer
+  rather than only the release page.
+
 ## [0.2.2] - 2026-08-30
 
 ### Added

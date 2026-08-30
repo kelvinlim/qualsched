@@ -219,4 +219,6 @@ export const checkForUpdate: () => Promise<UpdateInfo> = async () => ({
   updateAvailable: false,
   releaseNotes: "",
   releaseUrl: "",
+  downloadUrl: "",
+  downloadLabel: "",
 });

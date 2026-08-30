@@ -54,6 +54,24 @@
       .catch(() => (version = ""));
   });
 
+  $effect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    // Native menu: open the panel and surface errors (offline, 404) instead of
+    // the silent launch-time check.
+    void api.onCheckForUpdates(() => {
+      changelogOpen = true;
+      void check(false);
+    }).then((fn) => {
+      if (cancelled) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  });
+
 </script>
 
 <div class="layout">

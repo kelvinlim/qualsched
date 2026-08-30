@@ -352,6 +352,8 @@ export const checkForUpdate = async (): Promise<UpdateInfo> => {
         updateAvailable: false,
         releaseNotes: "",
         releaseUrl: "https://github.com/kelvinlim/qualsched/releases",
+        downloadUrl: "",
+        downloadLabel: "",
       };
     }
     const rel = (await res.json()) as {
@@ -366,6 +368,9 @@ export const checkForUpdate = async (): Promise<UpdateInfo> => {
       updateAvailable: isNewerVersion(latestVersion, currentVersion),
       releaseNotes: rel.body || "",
       releaseUrl: rel.html_url || "https://github.com/kelvinlim/qualsched/releases",
+      // Web is not an installer; the panel falls back to the GitHub release page.
+      downloadUrl: "",
+      downloadLabel: "",
     };
   } catch {
     throw { kind: "network", message: "Could not reach GitHub.", retryable: true };

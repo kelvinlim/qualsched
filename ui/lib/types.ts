@@ -191,6 +191,10 @@ export interface UpdateInfo {
   /** The release body, markdown. */
   releaseNotes: string;
   releaseUrl: string;
+  /** Direct installer for this OS/arch when one exists; empty otherwise. */
+  downloadUrl: string;
+  /** Short button label when downloadUrl is set; empty otherwise. */
+  downloadLabel: string;
 }
 
 /** Shape every rejected `invoke` takes — see AppError's Serialize impl in Rust. */
