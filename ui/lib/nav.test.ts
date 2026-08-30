@@ -2,8 +2,13 @@
  * Tiny runner for sidebar account/project gates. Invoked with
  * `node --experimental-strip-types lib/nav.test.ts` so we do not add a
  * frontend test framework. Relative `.ts` import is for Node ESM.
+ *
+ * `hasAccount` here is the usable-login flag (non-empty data center), not
+ * "any selected account". A blank "+ Add account" draft is `hasAccount: false`.
  */
+import { isUsableAccount } from "./account.ts";
 import { NAV_ITEMS, navItemDisabled, navItemTitle } from "./nav.ts";
+import type { Account } from "./types.ts";
 
 function item(screen: string) {
   const found = NAV_ITEMS.find((n) => n.screen === screen);
@@ -71,4 +76,33 @@ assertEqual(
   "contacts/schedule/distributions/export still wait on a survey profile",
 );
 
-console.log(`nav gates: ${cases.length + 2} checks passed`);
+function account(dataCenter: string): Account {
+  return {
+    id: "a1",
+    name: "New account",
+    dataCenter,
+    verifyTls: true,
+    defaultDirectory: "",
+    libraryId: "",
+    projects: [],
+  };
+}
+
+assertEqual(isUsableAccount(null), false, "no selection is not usable");
+assertEqual(isUsableAccount(account("")), false, "blank draft (empty dataCenter) is not usable");
+assertEqual(isUsableAccount(account("   ")), false, "whitespace-only dataCenter is not usable");
+assertEqual(isUsableAccount(account("yu1")), true, "saved data center is usable");
+
+const blankDraft = { hasAccount: isUsableAccount(account("")), hasProject: false };
+assertEqual(
+  navItemDisabled(item("project"), blankDraft.hasAccount, blankDraft.hasProject),
+  true,
+  "Survey profile disabled for a blank draft",
+);
+assertEqual(
+  navItemDisabled(item("import"), blankDraft.hasAccount, blankDraft.hasProject),
+  true,
+  "Import Config disabled for a blank draft",
+);
+
+console.log(`nav gates: ${cases.length + 8} checks passed`);

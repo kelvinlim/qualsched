@@ -98,8 +98,8 @@
         <button
           class="nav"
           class:active={app.screen === item.screen}
-          disabled={navItemDisabled(item, !!app.account, app.hasProject)}
-          title={navItemTitle(item, !!app.account, app.hasProject)}
+          disabled={navItemDisabled(item, app.hasAccount, app.hasProject)}
+          title={navItemTitle(item, app.hasAccount, app.hasProject)}
           onclick={() => app.go(item.screen)}
         >
           {item.label}

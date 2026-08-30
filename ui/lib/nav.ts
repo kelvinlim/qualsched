@@ -6,6 +6,10 @@ import type { ScreenName } from "./state.svelte";
  *
  * `hint` is the hover text. When an item is greyed out the title also says what
  * is missing — otherwise a disabled button explains nothing.
+ *
+ * The `hasAccount` boolean is "usable Qualtrics login" — selected and
+ * `dataCenter.trim()` is non-empty — not merely that a row is selected.
+ * Pass `app.hasAccount`. A blank "+ Add account" draft stays false until Save.
  */
 export type NavItem = {
   screen: ScreenName;
@@ -74,6 +78,7 @@ export const NAV_ITEMS: NavItem[] = [
   },
 ];
 
+/** `hasAccount` is a usable login (non-empty data center), not merely selected. */
 export function navItemDisabled(
   item: Pick<NavItem, "needsAccount" | "needsProject">,
   hasAccount: boolean,
@@ -84,6 +89,7 @@ export function navItemDisabled(
   return false;
 }
 
+/** `hasAccount` is a usable login (non-empty data center), not merely selected. */
 export function navItemTitle(
   item: Pick<NavItem, "needsAccount" | "needsProject" | "hint">,
   hasAccount: boolean,
