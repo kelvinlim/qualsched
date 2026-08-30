@@ -28,7 +28,7 @@ Linux desktop builds need the WebKit dev packages listed in the README.
 ui/                  shared Svelte: screens/, components/ (except Login/Legal),
                      lib/{types,filter,sort,state,cache}, app.css
 desktop/             Tauri app: App.svelte shell, lib/api.ts (invoke), src-tauri/,
-                     vite, updater. Version 0.2.1.
+                     vite, updater. Version 0.2.2.
 web/                 QualSched Web (imported from kelvinlim/qualsched-web):
                      backend/, frontend/ (App shell, Login, Legal, lib/api.ts fetch),
                      deploy/, docker-compose.yml, scripts/deploy.sh
