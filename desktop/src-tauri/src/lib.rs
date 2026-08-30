@@ -88,7 +88,7 @@ pub fn run() {
 /// Built to match Tauri's `Menu::default` (File/Edit/Window/Help) so we do not
 /// strip the usual predefined items, plus "Check for Updates…" in the standard
 /// place: the QualSched menu on macOS, Help on Windows and Linux.
-fn about_metadata(app: &tauri::AppHandle) -> AboutMetadata {
+fn about_metadata(app: &tauri::AppHandle) -> AboutMetadata<'_> {
     AboutMetadata {
         name: Some("QualSched".into()),
         version: Some(app.package_info().version.to_string()),
