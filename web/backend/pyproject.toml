@@ -3,7 +3,7 @@
 
 [project]
 name = "qualsched-web-backend"
-version = "0.2.0"
+version = "0.2.1"
 description = "QualSched Web backend — Qualtrics EMA scheduling for researchers. Participant PHI stays in Qualtrics."
 requires-python = ">=3.12"
 dependencies = [

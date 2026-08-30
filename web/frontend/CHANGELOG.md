@@ -4,6 +4,21 @@ All notable changes to QualSched Web are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-30
+
+### Fixed
+- Production Vite builds resolve `@qualsched/changelog?raw` and `@qualsched/guide?raw`
+  (regex aliases).
+- "What's new" only treats a GitHub release as an update when its semver is newer
+  than the running version.
+
+### Changed
+- Import Config defaults "Import into" to the currently selected account after
+  Read config. Create a new account remains an option.
+
+### Added
+- GitHub Actions CI: `npm ci`, check, desktop + web frontend builds, and ui tests.
+
 ## [0.2.0] - 2026-08-30
 
 ### Added

@@ -16,7 +16,7 @@
   import LegalPage from "./components/LegalPage.svelte";
   import LoginScreen from "./components/LoginScreen.svelte";
 
-  const VERSION = "0.2.0";
+  const VERSION = "0.2.1";
   const legalKind = api.legalKindFromPath();
 
   let loadError = $state("");
