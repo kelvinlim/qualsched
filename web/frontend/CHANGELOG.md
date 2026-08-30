@@ -4,12 +4,12 @@ All notable changes to QualSched Web are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-30
+
 ### Added
 - Public Privacy Policy and Terms of Service pages (`/privacy`, `/terms`) for
   Google OAuth branding. Login screen links to both; they render without sign-in.
 - Desktop QualSched logo on the login screen, sidebar, and browser tab.
-
-## [0.2.0] - 2026-08-30
 
 ### Changed
 - First monorepo release with desktop QualSched. Shared `ui/`, desktop, and

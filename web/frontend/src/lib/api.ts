@@ -339,7 +339,7 @@ export const checkForUpdate = async (): Promise<UpdateInfo> => {
   const currentVersion = "0.2.0";
   try {
     const res = await fetch(
-      "https://api.github.com/repos/kelvinlim/qualsched-web/releases/latest",
+      "https://api.github.com/repos/kelvinlim/qualsched/releases/latest",
     );
     if (!res.ok) {
       return {
@@ -347,7 +347,7 @@ export const checkForUpdate = async (): Promise<UpdateInfo> => {
         latestVersion: currentVersion,
         updateAvailable: false,
         releaseNotes: "",
-        releaseUrl: "https://github.com/kelvinlim/qualsched-web/releases",
+        releaseUrl: "https://github.com/kelvinlim/qualsched/releases",
       };
     }
     const rel = (await res.json()) as {
@@ -361,7 +361,7 @@ export const checkForUpdate = async (): Promise<UpdateInfo> => {
       latestVersion,
       updateAvailable: latestVersion !== currentVersion,
       releaseNotes: rel.body || "",
-      releaseUrl: rel.html_url || "https://github.com/kelvinlim/qualsched-web/releases",
+      releaseUrl: rel.html_url || "https://github.com/kelvinlim/qualsched/releases",
     };
   } catch {
     throw { kind: "network", message: "Could not reach GitHub.", retryable: true };
