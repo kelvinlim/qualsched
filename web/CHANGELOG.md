@@ -4,6 +4,22 @@ All notable changes to QualSched Web are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-08-30
+
+### Added
+- Accounts: Load from Qualtrics picker for Message library ID (GR_/UR_), same as
+  Contact directory.
+
+### Changed
+- All Load from Qualtrics lists sort by name (case-insensitive); unnamed items last.
+- Sidebar: Survey profile and Import Config stay disabled until a usable account
+  is selected (non-empty data center). A blank New account draft does not count.
+
+### Fixed
+- Survey profile: + Add profile actually opens a blank form you can type into
+  and Save (the new profile is added to the account). Existing profiles auto-open
+  if none was selected.
+
 ## [0.2.1] - 2026-08-30
 
 ### Fixed
