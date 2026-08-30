@@ -1,7 +1,8 @@
 <script lang="ts">
   import * as api from "@qualsched/api";
   import ChangelogPanel from "@qualsched/ui/components/ChangelogPanel.svelte";
-  import { app, type ScreenName } from "@qualsched/ui/lib/state.svelte";
+  import { NAV_ITEMS, navItemDisabled, navItemTitle } from "@qualsched/ui/lib/nav";
+  import { app } from "@qualsched/ui/lib/state.svelte";
   import { errorMessage, type UpdateInfo } from "@qualsched/ui/lib/types";
   import AccountsScreen from "@qualsched/ui/screens/AccountsScreen.svelte";
   import ContactsScreen from "@qualsched/ui/screens/ContactsScreen.svelte";
@@ -73,61 +74,6 @@
     app.loaded = false;
   }
 
-  const nav: {
-    screen: ScreenName;
-    label: string;
-    needsProject: boolean;
-    hint: string;
-  }[] = [
-    {
-      screen: "accounts",
-      label: "Accounts",
-      needsProject: false,
-      hint: "One per Qualtrics login: API token, data center, contact directory, message library",
-    },
-    {
-      screen: "project",
-      label: "Survey profile",
-      needsProject: false,
-      hint: "One per study: survey, mailing list, message templates, default schedule",
-    },
-    {
-      screen: "contacts",
-      label: "Contacts",
-      needsProject: true,
-      hint: "Your participants and each one's schedule",
-    },
-    {
-      screen: "schedule",
-      label: "Schedule",
-      needsProject: true,
-      hint: "Work out the invitations, review them, then send",
-    },
-    {
-      screen: "distributions",
-      label: "Distributions",
-      needsProject: true,
-      hint: "Invitations already booked with Qualtrics, and cancelling them",
-    },
-    {
-      screen: "import",
-      label: "Import Config",
-      needsProject: false,
-      hint: "Read a settings file from the old command-line tool, or one exported here",
-    },
-    {
-      screen: "export",
-      label: "Export Config",
-      needsProject: true,
-      hint: "Save this survey profile as a file another computer can import",
-    },
-    {
-      screen: "guide",
-      label: "User guide",
-      needsProject: false,
-      hint: "The full guide to setting up and running a study",
-    },
-  ];
 </script>
 
 {#if legalKind}
@@ -148,14 +94,12 @@
         <span class="name">QualSched</span>
         {#if version}<span class="version">v{version}</span>{/if}
       </div>
-      {#each nav as item (item.screen)}
+      {#each NAV_ITEMS as item (item.screen)}
         <button
           class="nav"
           class:active={app.screen === item.screen}
-          disabled={item.needsProject && !app.hasProject}
-          title={item.needsProject && !app.hasProject
-            ? `${item.hint} — choose an account and a survey profile first`
-            : item.hint}
+          disabled={navItemDisabled(item, !!app.account, app.hasProject)}
+          title={navItemTitle(item, !!app.account, app.hasProject)}
           onclick={() => app.go(item.screen)}
         >
           {item.label}
