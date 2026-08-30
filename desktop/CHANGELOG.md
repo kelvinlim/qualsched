@@ -2,7 +2,7 @@
 
 All notable changes to QualSched are documented in this file.
 
-## [Unreleased]
+## [0.2.3] - 2026-08-30
 
 ### Added
 - Desktop **Check for Updates…** in the application menu (macOS QualSched menu;

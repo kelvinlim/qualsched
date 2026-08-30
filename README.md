@@ -14,7 +14,7 @@ QualSched is free and open source under the [MIT License](LICENSE).
 
 ```
 ui/                  shared Svelte screens, components, types, filter/sort/state/cache, app.css
-desktop/             Tauri desktop app (v0.2.2): App shell, lib/api.ts (invoke), src-tauri/
+desktop/             Tauri desktop app (v0.2.3): App shell, lib/api.ts (invoke), src-tauri/
 web/                 QualSched Web: FastAPI + MariaDB, frontend shell (login/legal), deploy/
 ```
 
