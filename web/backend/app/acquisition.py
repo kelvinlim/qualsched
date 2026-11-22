@@ -42,8 +42,9 @@ from app.qualtrics import QualtricsClient, QualtricsError
 MONITOR_FIELD = "QsMonitor"
 MAX_SPAN_DAYS = 370
 
-# Metadata the export is allowed to ask for. Names, email, IP, and location
-# are intentionally absent. ``questionIds: []`` asks for no answer columns.
+# Column ids from the Start Response Export schema's surveyMetadataIds list.
+# Names, email, IP, and location are intentionally absent. RecipientID is not
+# in this list; it is not an embedded-data field name we can safely request.
 SAFE_METADATA = [
     "endDate",
     "status",
@@ -53,15 +54,20 @@ SAFE_METADATA = [
     "distributionChannel",
     "startDate",
 ]
-EMBEDDED_IDS = [
-    "RecipientID",
-    "recipientId",
-    "ContactID",
-    "contactId",
-    "DistributionID",
-    "distributionId",
-    "Q_DL",
-]
+# JSON and NDJSON exports return HTTP 400 if any of these keys are present,
+# even when the value is false. Documented on Start Response Export.
+JSON_EXPORT_FORBIDDEN = frozenset(
+    {
+        "includeDisplayOrder",
+        "useLabels",
+        "formatDecimalAsComma",
+        "seenUnansweredRecode",
+        "multiselectSeenUnansweredRecode",
+        "timeZone",
+        "newlineReplacement",
+        "breakoutSets",
+    }
+)
 
 PREREQUISITE = (
     "A completion is counted only when the response is finished, its status is a "
@@ -82,7 +88,7 @@ DENOMINATOR_NOTE = (
 )
 
 DayKind = Literal["ratio", "future", "none", "nonStudy", "unknown"]
-ExportMode = Literal["restricted", "embedded", "metadata"]
+ExportMode = Literal["columns", "metadata", "no-answers", "full"]
 
 
 class AcquisitionParseError(Exception):
@@ -199,21 +205,45 @@ class ParsedResponse:
 
 
 def export_request_bodies() -> list[tuple[ExportMode, dict[str, Any]]]:
-    """Narrowest export first. Later bodies are used only if Qualtrics rejects a filter.
+    """Narrowest create-export body first.
 
-    None of them request recipient name, email, IP, or location. Answers are
-    requested only when an earlier body is rejected; the parser still drops them.
+    ``embeddedDataIds`` is omitted on every body. That field must name embedded
+    data fields that exist on this survey; a name that does not (including
+    ``RecipientID`` or ``Q_DL``) makes Qualtrics reject the create call with
+    HTTP 400. Omitting it exports whatever embedded fields the survey has, and
+    the parser keeps only recipient and distribution ids.
+
+    ``questionIds: []`` asks for no answer columns. The later bodies drop that
+    and then ``surveyMetadataIds``, because a 400 on a shared field has to be
+    escaped by a body that no longer sends it. The last body is only format
+    and compression, which Start Response Export accepts with no filters.
+    Answers, when a broader body is required, are discarded while parsing.
     """
-    base: dict[str, Any] = {
-        "format": "ndjson",
+    metadata = list(SAFE_METADATA)
+    columns: dict[str, Any] = {
+        "format": "json",
         "compress": True,
-        "exportResponsesInProgress": False,
-        "surveyMetadataIds": list(SAFE_METADATA),
+        "surveyMetadataIds": metadata,
+        "questionIds": [],
     }
-    restricted = {**base, "embeddedDataIds": list(EMBEDDED_IDS), "questionIds": []}
-    embedded = {**base, "embeddedDataIds": list(EMBEDDED_IDS)}
-    metadata = dict(base)
-    return [("restricted", restricted), ("embedded", embedded), ("metadata", metadata)]
+    with_answers: dict[str, Any] = {
+        "format": "json",
+        "compress": True,
+        "surveyMetadataIds": list(metadata),
+    }
+    no_answers: dict[str, Any] = {"format": "json", "compress": True, "questionIds": []}
+    full: dict[str, Any] = {"format": "json", "compress": True}
+    bodies: list[tuple[ExportMode, dict[str, Any]]] = [
+        ("columns", columns),
+        ("metadata", with_answers),
+        ("no-answers", no_answers),
+        ("full", full),
+    ]
+    for _, body in bodies:
+        # These keys 400 a json/ndjson export even when false. Never send them.
+        if JSON_EXPORT_FORBIDDEN.intersection(body):
+            raise RuntimeError("export body includes a parameter Qualtrics rejects for json")
+    return bodies
 
 
 def normalize_monitor(value: str | None) -> Literal["active", "inactive"]:
@@ -573,7 +603,7 @@ def aggregate(
     *,
     now: datetime,
     profile_timezone: str,
-    export_mode: ExportMode = "restricted",
+    export_mode: ExportMode = "columns",
 ) -> AcquisitionReport:
     if now.tzinfo is None:
         now = now.replace(tzinfo=UTC)
@@ -956,7 +986,7 @@ def _int_field(embedded: dict[str, str], key: str) -> int:
             return 0
 
 
-_MODE_RANK = {"restricted": 0, "embedded": 1, "metadata": 2}
+_MODE_RANK = {"columns": 0, "metadata": 1, "no-answers": 2, "full": 3}
 
 
 def load_report(
@@ -1036,21 +1066,22 @@ def load_report(
                 )
 
     responses: list[ParsedResponse] = []
-    mode: ExportMode = "restricted"
+    mode: ExportMode = "columns"
+    copy_export_failed = False
     for survey in survey_rotation(profile):
         try:
             found, used = _download_responses(client, survey.id, sleep)
-        except QualtricsError as exc:
-            if exc.status == 404 and survey.id != primary:
+        except QualtricsError:
+            # A leftover survey copy that Qualtrics rejects must not hide the
+            # profile survey. Only a missing copy was previously ignored; a 400
+            # on that copy aborted the whole screen.
+            if survey.id != primary:
+                copy_export_failed = True
                 continue
             raise
         responses.extend(found)
         if _MODE_RANK[used] > _MODE_RANK[mode]:
             mode = used
-    if mode != "restricted":
-        # Mentioned via exportMode; the limitation is added here so the UI can show it
-        # without a second code path. aggregate() also receives export_mode.
-        pass
     report = aggregate(
         participants,
         invitations,
@@ -1059,11 +1090,16 @@ def load_report(
         profile_timezone=profile.timezone or "",
         export_mode=mode,
     )
-    if mode != "restricted":
+    if mode != "columns":
         report.limitations.append(
-            "Qualtrics rejected a metadata-only export filter, so a broader file was "
+            "Qualtrics rejected a filtered response export, so a broader file was "
             "read in memory and reduced to completion fields before counting. Survey "
             "answers were not kept, and names, email, IP, and location were not requested."
+        )
+    if copy_export_failed:
+        report.limitations.append(
+            "A leftover survey copy could not be exported. Completions recorded "
+            "only on that copy are not in these counts."
         )
     if sms_missing:
         report.limitations.append(

@@ -68,18 +68,22 @@ A completion is applied only when `RecipientID` or `contactId` (also accepted as
 `contactId` (`CID_…`) or mailing-list `contactLookupId` (`CGC_…`). Name, email,
 phone, and external data reference are ignored, even if they happen to match.
 
-The export request asks Qualtrics for a narrow file first:
+The create-export call does not send `embeddedDataIds`. That parameter has to
+name embedded-data fields that exist on the survey; requesting `RecipientID`
+or `Q_DL` when they are not those fields makes Qualtrics return HTTP 400 for
+the whole request (`invalid columns`). Recipient id is read from whatever
+embedded fields the export actually contains. `questionIds: []` asks for no
+answer columns. If Qualtrics rejects a filtered body, the next body drops that
+filter. The last body is only `format: json` and `compress: true`. JSON and
+NDJSON exports are not sent `useLabels`, `breakoutSets`, `timeZone`, or the
+other parameters the Start Response Export page says are rejected even when
+false. Answers, if a broader file is required, are discarded while parsing.
 
-- metadata: `endDate`, `status`, `finished`, `recordedDate`, `_recordId`,
-  `distributionChannel`, `startDate`
-- embedded data: `RecipientID`, `recipientId`, `ContactID`, `contactId`,
-  `DistributionID`, `distributionId`, `Q_DL`
-- `questionIds: []` so answer columns are not requested
-
-Names, email, IP, location, and external reference are not in that list. If
-Qualtrics rejects the filter, a broader file is read **in memory**, reduced to the
-same fields, and discarded. The screen says when that fallback happened. Answers
-are never returned to the UI.
+The first body requests those metadata columns and `questionIds: []`. Names,
+email, IP, location, and external reference are not in that list. A broader file,
+when the filter is rejected, is read **in memory**, reduced to the completion
+fields, and discarded. The screen says when that fallback happened. Answers are
+never returned to the UI.
 
 Linking a response to one invitation:
 

@@ -29,15 +29,6 @@ const SAFE_METADATA: &[&str] = &[
     "distributionChannel",
     "startDate",
 ];
-const EMBEDDED_IDS: &[&str] = &[
-    "RecipientID",
-    "recipientId",
-    "ContactID",
-    "contactId",
-    "DistributionID",
-    "distributionId",
-    "Q_DL",
-];
 
 pub const PREREQUISITE: &str = "A completion is counted only when the response is finished, its status is a real response (IP Address, Imported, or Offline — not preview, test, synthetic, or spam), and RecipientID or contactId exactly equals that participant's Qualtrics contactId (CID_…) or contactLookupId (CGC_…). Name, email, phone, and external data reference are not used. Qualtrics adds RecipientID for invitations sent to directory contacts; if the export has no such field, completions stay unmatched instead of being guessed.";
 
@@ -54,25 +45,32 @@ impl std::fmt::Display for ParseError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExportMode {
-    Restricted,
-    Embedded,
+    /// Metadata columns plus no answer columns.
+    Columns,
+    /// Metadata columns; answer columns were requested and then discarded.
     Metadata,
+    /// No answer columns, and no metadata filter.
+    NoAnswers,
+    /// Format and compression only. The parser still drops answers.
+    Full,
 }
 
 impl ExportMode {
     fn as_str(self) -> &'static str {
         match self {
-            ExportMode::Restricted => "restricted",
-            ExportMode::Embedded => "embedded",
+            ExportMode::Columns => "columns",
             ExportMode::Metadata => "metadata",
+            ExportMode::NoAnswers => "no-answers",
+            ExportMode::Full => "full",
         }
     }
 
     fn rank(self) -> u8 {
         match self {
-            ExportMode::Restricted => 0,
-            ExportMode::Embedded => 1,
-            ExportMode::Metadata => 2,
+            ExportMode::Columns => 0,
+            ExportMode::Metadata => 1,
+            ExportMode::NoAnswers => 2,
+            ExportMode::Full => 3,
         }
     }
 }
@@ -197,21 +195,45 @@ pub fn normalize_monitor(value: &str) -> &'static str {
 }
 
 pub fn export_request_bodies() -> Vec<(ExportMode, Value)> {
-    let base = json!({
-        "format": "ndjson",
-        "compress": true,
-        "exportResponsesInProgress": false,
-        "surveyMetadataIds": SAFE_METADATA,
-    });
-    let mut restricted = base.clone();
-    restricted["embeddedDataIds"] = json!(EMBEDDED_IDS);
-    restricted["questionIds"] = json!([]);
-    let mut embedded = base.clone();
-    embedded["embeddedDataIds"] = json!(EMBEDDED_IDS);
+    // Same ladder as the web backend. Do not send embeddedDataIds: those names
+    // have to exist on the survey, and guessing RecipientID makes Qualtrics
+    // return HTTP 400 for the whole create call. format json is used because
+    // every previous body used ndjson, so a 400 on that format defeated the
+    // fallback. The last body is the unfiltered request the API documents.
+    let metadata = json!(SAFE_METADATA);
     vec![
-        (ExportMode::Restricted, restricted),
-        (ExportMode::Embedded, embedded),
-        (ExportMode::Metadata, base),
+        (
+            ExportMode::Columns,
+            json!({
+                "format": "json",
+                "compress": true,
+                "surveyMetadataIds": metadata,
+                "questionIds": [],
+            }),
+        ),
+        (
+            ExportMode::Metadata,
+            json!({
+                "format": "json",
+                "compress": true,
+                "surveyMetadataIds": SAFE_METADATA,
+            }),
+        ),
+        (
+            ExportMode::NoAnswers,
+            json!({
+                "format": "json",
+                "compress": true,
+                "questionIds": [],
+            }),
+        ),
+        (
+            ExportMode::Full,
+            json!({
+                "format": "json",
+                "compress": true,
+            }),
+        ),
     ]
 }
 
@@ -1183,17 +1205,35 @@ mod tests {
     #[test]
     fn export_request_omits_identity_and_answers() {
         let bodies = export_request_bodies();
-        assert_eq!(bodies.len(), 3);
-        let first = bodies[0].1.to_string();
-        assert!(!first.contains("recipientEmail"));
-        assert!(!first.contains("ipAddress"));
-        assert!(!first.contains("externalDataReference"));
-        assert_eq!(bodies[0].1["questionIds"], json!([]));
-        assert_eq!(bodies[0].1["exportResponsesInProgress"], json!(false));
+        assert_eq!(bodies.len(), 4);
+        let first = &bodies[0].1;
+        let text = first.to_string();
+        assert!(!text.contains("recipientEmail"));
+        assert!(!text.contains("ipAddress"));
+        assert!(!text.contains("externalDataReference"));
+        assert!(first.get("embeddedDataIds").is_none());
+        assert_eq!(first["format"], json!("json"));
+        assert_eq!(first["questionIds"], json!([]));
+        let forbidden = [
+            "includeDisplayOrder",
+            "useLabels",
+            "formatDecimalAsComma",
+            "seenUnansweredRecode",
+            "multiselectSeenUnansweredRecode",
+            "timeZone",
+            "newlineReplacement",
+            "breakoutSets",
+        ];
+        let last = &bodies[3].1;
+        assert_eq!(last, &json!({"format": "json", "compress": true}));
         for (_, body) in &bodies {
-            let text = body.to_string();
-            assert!(!text.contains("recipientEmail"));
-            assert!(!text.contains("ipAddress"));
+            let encoded = body.to_string();
+            assert!(!encoded.contains("recipientEmail"));
+            assert!(!encoded.contains("RecipientID"));
+            assert!(body.get("embeddedDataIds").is_none());
+            for key in forbidden {
+                assert!(body.get(key).is_none(), "{key} is not allowed on a json export");
+            }
         }
     }
 
@@ -1224,6 +1264,24 @@ mod tests {
         assert!(!err.to_string().contains("secret-symptom"));
         assert!(bad.iter().all(|byte| *byte == 0));
 
+        let envelope = json!({
+            "responses": [{
+                "responseId": "R_1",
+                "values": {
+                    "finished": 1,
+                    "status": 0,
+                    "endDate": "2026-07-13T13:30:00Z",
+                    "RecipientID": "CID_ada",
+                    "QID1": "secret-symptom"
+                }
+            }]
+        })
+        .to_string();
+        let mut wrapped = zip_with(0, envelope.len(), envelope.as_bytes());
+        let from_json = parse_export_bytes(&mut wrapped).unwrap();
+        assert_eq!(from_json[0].recipient_id.as_deref(), Some("CID_ada"));
+        assert!(!format!("{from_json:?}").contains("secret-symptom"));
+
         let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
         encoder.write_all(line.as_bytes()).unwrap();
         let compressed = encoder.finish().unwrap();
@@ -1252,7 +1310,7 @@ mod tests {
             response("R_offline", json!({"finished": 1, "status": 16, "RecipientID": "CID_ada", "DistributionID": "D3", "endDate": "2026-07-13T17:10:00Z"})),
             response("R_email", json!({"finished": 1, "status": 0, "endDate": "2026-07-13T13:40:00Z", "recipientEmail": "ada@example.com"})),
         ];
-        let report = aggregate(&vec![person()], &invites, &responses, now(), "America/Chicago", ExportMode::Restricted);
+        let report = aggregate(&vec![person()], &invites, &responses, now(), "America/Chicago", ExportMode::Columns);
         let cell = day(&report, "2026-07-13");
         assert_eq!(cell.completed, Some(3));
         assert_eq!(cell.expected, Some(3));
@@ -1286,7 +1344,7 @@ mod tests {
             response("R5", json!({"finished": 1, "status": 0, "RecipientID": "CID_ada", "DistributionID": "D1", "endDate": "2026-07-13T13:50:00Z"})),
             response("Rlate", json!({"finished": 1, "status": 0, "RecipientID": "CID_ada", "endDate": "2026-07-14T20:00:00Z"})),
         ];
-        let report = aggregate(&[person()], &invites, &responses, now(), "America/Chicago", ExportMode::Restricted);
+        let report = aggregate(&[person()], &invites, &responses, now(), "America/Chicago", ExportMode::Columns);
         assert_eq!(report.excluded.duplicate_ids, 1);
         assert_eq!(day(&report, "2026-07-13").completed, Some(2));
         assert_eq!(day(&report, "2026-07-14").completed, Some(1));
@@ -1307,7 +1365,7 @@ mod tests {
             &[],
             now(),
             "America/Chicago",
-            ExportMode::Restricted,
+            ExportMode::Columns,
         );
         assert_eq!(day(&zero, "2026-07-14").completed, Some(0));
         assert_eq!(day(&zero, "2026-07-14").expected, Some(1));
@@ -1319,7 +1377,7 @@ mod tests {
             &[],
             now(),
             "America/Chicago",
-            ExportMode::Restricted,
+            ExportMode::Columns,
         );
         assert_eq!(day(&odd, "2026-07-14").expected, Some(1));
     }
@@ -1334,7 +1392,7 @@ mod tests {
             "R",
             json!({"finished": 1, "status": 0, "RecipientID": "CID_ada", "endDate": "2026-07-13T17:00:00Z"}),
         )];
-        let report = aggregate(&[person()], &invites, &responses, now(), "America/Chicago", ExportMode::Restricted);
+        let report = aggregate(&[person()], &invites, &responses, now(), "America/Chicago", ExportMode::Columns);
         assert_eq!(day(&report, "2026-07-13").completed, Some(0));
         assert_eq!(day(&report, "2026-07-13").expected, Some(2));
         assert_eq!(report.rows[0].ambiguous, 1);
@@ -1356,7 +1414,7 @@ mod tests {
             &[],
             at("2026-03-08T18:00:00Z"),
             "America/Chicago",
-            ExportMode::Restricted,
+            ExportMode::Columns,
         );
         assert_eq!(day(&spring, "2026-03-07").kind, "ratio");
         assert_eq!(day(&spring, "2026-03-08").kind, "ratio");
@@ -1370,7 +1428,7 @@ mod tests {
             &[],
             at("2026-11-01T18:00:00Z"),
             "America/Chicago",
-            ExportMode::Restricted,
+            ExportMode::Columns,
         );
         assert_eq!(day(&fall, "2026-10-31").expected, Some(1));
         assert_eq!(day(&fall, "2026-11-01").expected, Some(1));
@@ -1383,7 +1441,7 @@ mod tests {
             &[],
             now(),
             "America/Chicago",
-            ExportMode::Restricted,
+            ExportMode::Columns,
         );
         assert_eq!(unknown.rows[0].timezone_source, "invalid");
         assert!(unknown.rows[0].days.iter().all(|day| day.kind == "unknown"));
@@ -1391,7 +1449,7 @@ mod tests {
 
         let mut scheduled = person();
         scheduled.surveys_scheduled = 4;
-        let empty = aggregate(&[scheduled], &[], &[], now(), "America/Chicago", ExportMode::Restricted);
+        let empty = aggregate(&[scheduled], &[], &[], now(), "America/Chicago", ExportMode::Columns);
         assert_eq!(day(&empty, "2026-07-14").kind, "none");
         assert_eq!(empty.rows[0].to_date.expected, Some(0));
         assert!(empty.limitations.iter().any(|item| item.contains("SurveysScheduled")));
@@ -1443,7 +1501,7 @@ mod tests {
             &[],
             now(),
             "America/Chicago",
-            ExportMode::Restricted,
+            ExportMode::Columns,
         );
         assert!(report.rows[0].days.len() <= (MAX_SPAN_DAYS as usize) + 14);
         assert!(report.limitations.iter().any(|item| item.contains("370")));
@@ -1461,7 +1519,7 @@ mod tests {
             &[],
             now(),
             "America/Chicago",
-            ExportMode::Restricted,
+            ExportMode::Columns,
         );
         let today = report
             .rows[0]

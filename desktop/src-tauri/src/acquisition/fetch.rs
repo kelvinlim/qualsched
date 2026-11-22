@@ -226,14 +226,17 @@ pub async fn load_report(
     }
 
     let mut responses = Vec::new();
-    let mut mode = ExportMode::Restricted;
+    let mut mode = ExportMode::Columns;
+    let mut copy_export_failed = false;
     for survey in project.survey_rotation() {
         match download_responses(client, &survey.id).await {
             Ok((found, used)) => {
                 responses.extend(found);
                 mode = wider(mode, used);
             }
-            Err(AppError::NotFound(_)) if survey.id != primary => continue,
+            // A leftover copy that Qualtrics rejects (including HTTP 400) must
+            // not hide completions from the profile's own survey.
+            Err(_) if survey.id != primary => copy_export_failed = true,
             Err(err) => return Err(err),
         }
     }
@@ -245,9 +248,14 @@ pub async fn load_report(
         &project.timezone,
         mode,
     );
-    if mode != ExportMode::Restricted {
+    if mode != ExportMode::Columns {
         report.limitations.push(
-            "Qualtrics rejected a metadata-only export filter, so a broader file was read in memory and reduced to completion fields before counting. Survey answers were not kept, and names, email, IP, and location were not requested.".into(),
+            "Qualtrics rejected a filtered response export, so a broader file was read in memory and reduced to completion fields before counting. Survey answers were not kept, and names, email, IP, and location were not requested.".into(),
+        );
+    }
+    if copy_export_failed {
+        report.limitations.push(
+            "A leftover survey copy could not be exported. Completions recorded only on that copy are not in these counts.".into(),
         );
     }
     if sms_missing {

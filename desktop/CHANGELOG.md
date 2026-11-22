@@ -4,6 +4,11 @@ All notable changes to QualSched are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Acquisition no longer sends guessed embedded-data field names to Qualtrics.
+  Those names made the response export return HTTP 400, including on the
+  fallbacks that still sent them.
+
 ### Added
 - **Acquisition** screen: per-participant daily blocks of completed surveys versus
   invitations still listed in Qualtrics. Counts use finished responses with an exact
