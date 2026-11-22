@@ -6,6 +6,7 @@
     heatOf,
     rowWindow,
     statusPatchApplies,
+    statusWriteIsCurrent,
     summaryText,
     visibleRows,
     windowSummary,
@@ -23,8 +24,10 @@
   let activeOnly = $state(true);
   let span = $state<"7" | "study">("7");
   let marking = $state("");
-  /** Bumped when the account or profile changes so an in-flight status write cannot land later. */
-  let markGeneration = 0;
+  /** Bumped only when the account or profile changes, not when another row is toggled. */
+  let contextGeneration = 0;
+  /** Latest in-flight save for each participant. A newer click on the same row wins. */
+  const markTickets = new Map<string, number>();
 
   const shown = $derived(report ? visibleRows(report.rows, activeOnly) : []);
 
@@ -34,7 +37,8 @@
     report = null;
     error = "";
     marking = "";
-    markGeneration += 1;
+    markTickets.clear();
+    contextGeneration += 1;
     if (accountId && projectId) void load(accountId, projectId);
     return () => {
       report = null;
@@ -66,9 +70,18 @@
     const accountId = app.account?.id;
     const projectId = app.project?.id;
     if (!accountId || !projectId || !report) return;
-    const generation = ++markGeneration;
+    const generation = contextGeneration;
+    const ticket = (markTickets.get(row.contactId) ?? 0) + 1;
+    markTickets.set(row.contactId, ticket);
     marking = row.contactId;
     error = "";
+    const stillCurrent = () =>
+      statusWriteIsCurrent(
+        generation,
+        contextGeneration,
+        ticket,
+        markTickets.get(row.contactId) ?? 0,
+      );
     try {
       const updated = await api.setAcquisitionStatus(
         accountId,
@@ -76,7 +89,7 @@
         row.contactId,
         status,
       );
-      if (generation !== markGeneration) return;
+      if (!stillCurrent()) return;
       if (
         !statusPatchApplies(
           app.selectedAccountId,
@@ -96,7 +109,7 @@
       };
     } catch (e) {
       if (
-        generation === markGeneration &&
+        stillCurrent() &&
         statusPatchApplies(
           app.selectedAccountId,
           app.selectedProjectId,
@@ -108,7 +121,10 @@
         error = errorMessage(e);
       }
     } finally {
-      if (generation === markGeneration) marking = "";
+      if (markTickets.get(row.contactId) === ticket) {
+        markTickets.delete(row.contactId);
+        if (marking === row.contactId) marking = "";
+      }
     }
   }
 

@@ -16,6 +16,20 @@ export type Heat =
   | "nonStudy"
   | "unknown";
 
+/**
+ * Two rows can be saved at once. A write is current when the screen is still the
+ * one it started on, and no newer write for this same participant has started.
+ * Another participant's write does not cancel it.
+ */
+export function statusWriteIsCurrent(
+  startedContext: number,
+  currentContext: number,
+  startedTicket: number,
+  currentTicket: number,
+): boolean {
+  return startedContext === currentContext && startedTicket === currentTicket;
+}
+
 /** A status write may return after the researcher has switched account or profile. */
 export function statusPatchApplies(
   currentAccountId: string | null,

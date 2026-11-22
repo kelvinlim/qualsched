@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::Read;
 use std::sync::atomic::{compiler_fence, Ordering};
 
-use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use chrono_tz::Tz;
 use serde::Serialize;
 use serde_json::{json, Map, Value};
@@ -536,9 +536,19 @@ fn parse_start(raw: &str) -> Option<NaiveDate> {
     NaiveDate::parse_from_str(&text[..end], "%Y-%m-%d").ok()
 }
 
+/// Add days without panicking. `Duration::days` multiplies into milliseconds and
+/// panics when that product overflows; a date past the calendar is `None`.
+fn try_shift(day: NaiveDate, days: i64) -> Option<NaiveDate> {
+    if days >= 0 {
+        day.checked_add_days(chrono::Days::new(days as u64))
+    } else {
+        let magnitude = days.checked_neg()?;
+        day.checked_sub_days(chrono::Days::new(magnitude as u64))
+    }
+}
+
 fn shift(day: NaiveDate, days: i64) -> NaiveDate {
-    day.checked_add_signed(Duration::days(days))
-        .unwrap_or(day)
+    try_shift(day, days).unwrap_or(day)
 }
 
 fn link_distribution(token: Option<&str>, q_dl: Option<&str>, known: &HashSet<String>) -> Option<String> {
@@ -623,8 +633,14 @@ fn outside_study(day: NaiveDate, start: Option<NaiveDate>, num_days: i64) -> boo
     if num_days <= 0 {
         return false;
     }
-    let end = shift(start, num_days - 1);
-    day < start || day > end
+    if day < start {
+        return true;
+    }
+    // An end date past the calendar means the study still covers this day.
+    match try_shift(start, num_days.saturating_sub(1)) {
+        Some(end) => day > end,
+        None => false,
+    }
 }
 
 struct Admin {
@@ -1432,5 +1448,28 @@ mod tests {
         assert!(report.rows[0].days.len() <= (MAX_SPAN_DAYS as usize) + 14);
         assert!(report.limitations.iter().any(|item| item.contains("370")));
         assert!(report.rows[0].days.iter().any(|day| day.date == "2026-07-15"));
+    }
+
+    #[test]
+    fn enormous_num_days_does_not_panic_or_mark_today_outside_the_study() {
+        let mut participant = person();
+        participant.num_days = i64::MAX;
+        participant.start_date = "2020-01-01".into();
+        let report = aggregate(
+            &[participant],
+            &[],
+            &[],
+            now(),
+            "America/Chicago",
+            ExportMode::Restricted,
+        );
+        let today = report
+            .rows[0]
+            .days
+            .iter()
+            .find(|day| day.date == "2026-07-15")
+            .unwrap();
+        assert_ne!(today.kind, "nonStudy");
+        assert!(try_shift(NaiveDate::from_ymd_opt(2020, 1, 1).unwrap(), i64::MAX).is_none());
     }
 }

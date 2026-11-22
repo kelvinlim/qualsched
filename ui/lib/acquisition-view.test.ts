@@ -9,6 +9,7 @@ import {
   lastSeven,
   monitorStatus,
   statusPatchApplies,
+  statusWriteIsCurrent,
   summaryText,
   visibleRows,
   windowSummary,
@@ -134,6 +135,17 @@ assertEqual(
   statusPatchApplies("acct", "proj", "acct", "proj", false),
   false,
   "status write does not patch after the report was cleared",
+);
+assertEqual(statusWriteIsCurrent(1, 1, 3, 3), true, "this row's own write is still current");
+assertEqual(
+  statusWriteIsCurrent(1, 1, 3, 4),
+  false,
+  "a newer click on the same participant replaces the earlier write",
+);
+assertEqual(
+  statusWriteIsCurrent(1, 2, 3, 3),
+  false,
+  "switching profile cancels an in-flight status write",
 );
 
 const source = await import("node:fs/promises").then((fs) =>
