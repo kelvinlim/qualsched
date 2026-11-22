@@ -2,8 +2,10 @@
   import * as api from "@qualsched/api";
   import { app } from "../lib/state.svelte";
   import { errorMessage } from "../lib/types";
+  import BusyMark from "../components/BusyMark.svelte";
 
   let busy = $state(false);
+  let busyOp = $state(0);
   let savedName = $state("");
   let error = $state("");
 
@@ -24,6 +26,7 @@
     error = "";
     savedName = "";
     const filename = suggestedName();
+    busyOp += 1;
     busy = true;
     try {
       await api.exportProjectConfig(app.account.id, app.project.id, filename);
@@ -85,6 +88,10 @@
     schedules live in Qualtrics and are not part of it either.
   </p>
   <button class="primary" onclick={exportConfig} disabled={busy}>
-    {busy ? "Saving…" : "Download…"}
+    {#if busy}
+      <BusyMark operation={`export-${busyOp}`} label="Saving" />
+    {:else}
+      Download…
+    {/if}
   </button>
 </div>

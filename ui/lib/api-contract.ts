@@ -83,6 +83,7 @@ export const getMessageText: (accountId: string, messageId: string) => Promise<s
 export const getAcquisition: (
   accountId: string,
   projectId: string,
+  _signal?: AbortSignal,
 ) => Promise<AcquisitionReport> = async () => ({
   generatedAt: "",
   definitive: true,

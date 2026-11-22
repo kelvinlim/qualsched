@@ -92,8 +92,11 @@ export const getMessageText = (accountId: string, messageId: string) =>
 
 // --- contacts -------------------------------------------------------------
 
-export const getAcquisition = (accountId: string, projectId: string) =>
-  invoke<AcquisitionReport>("get_acquisition", { accountId, projectId });
+export const getAcquisition = (
+  accountId: string,
+  projectId: string,
+  _signal?: AbortSignal,
+) => invoke<AcquisitionReport>("get_acquisition", { accountId, projectId });
 
 export const setAcquisitionStatus = (
   accountId: string,

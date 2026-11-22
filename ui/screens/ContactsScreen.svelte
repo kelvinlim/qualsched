@@ -5,6 +5,7 @@
   import { matchesQuery } from "../lib/filter";
   import { app } from "../lib/state.svelte";
   import { errorMessage, type ContactView } from "../lib/types";
+  import BusyMark from "../components/BusyMark.svelte";
   import ContactEditor from "../components/ContactEditor.svelte";
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
   import {
@@ -61,6 +62,7 @@
   let notice = $state("");
   let busy = $state(false);
   let loading = $state(false);
+  let loadOp = $state(0);
   let pendingRemoval = $state<ContactView | null>(null);
   let confirmRemove = $state(false);
   let sort = $state<{ key: string; dir: SortDir }>({ key: "name", dir: "asc" });
@@ -79,6 +81,7 @@
 
   async function load() {
     if (!app.account || !app.project) return;
+    loadOp += 1;
     loading = true;
     error = "";
     try {
@@ -279,7 +282,13 @@
   <button class="primary" onclick={() => (editor = "new")} disabled={busy}>
     + Add participant
   </button>
-  <button onclick={load} disabled={loading}>{loading ? "Loading…" : "Refresh"}</button>
+  <button onclick={load} disabled={loading}>
+    {#if loading}
+      <BusyMark operation={`contacts-${loadOp}`} label="Loading" />
+    {:else}
+      Refresh
+    {/if}
+  </button>
   <button onclick={applyDefaults} disabled={busy || selectedVisible.length === 0}>
     Fill in missing values ({selectedVisible.length})
   </button>

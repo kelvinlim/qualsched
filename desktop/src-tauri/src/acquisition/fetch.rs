@@ -17,34 +17,101 @@ use crate::config::{Account, Project};
 use crate::error::{AppError, AppResult};
 use crate::qualtrics::{
     contacts,
+    machine_code,
     models::RawContact,
-    QualtricsClient,
+    QualtricsClient, RemoteReject,
 };
 use crate::scheduler::SurveyRef;
 
-fn static_export(err: AppError) -> AppError {
-    match err {
-        AppError::Unauthorized | AppError::RateLimited | AppError::MissingToken => err,
-        AppError::NotFound(_) => AppError::NotFound("Qualtrics response export failed (HTTP 404).".into()),
-        other => {
-            let status = match &other {
-                AppError::Api(message) => message
-                    .split("HTTP ")
-                    .nth(1)
-                    .and_then(|rest| rest.split(')').next())
-                    .unwrap_or("502"),
-                _ => "502",
-            };
-            AppError::Api(format!("Qualtrics response export failed (HTTP {status})."))
-        }
+const POLL_LIMIT_PER_SURVEY: u32 = 160;
+const POLL_LIMIT_TOTAL: u32 = 240;
+
+fn export_failure(
+    stage: &str,
+    status: Option<u16>,
+    code: Option<&str>,
+    detail: Option<&str>,
+) -> AppError {
+    let stage = match stage {
+        "start" | "poll" | "download" | "parse" | "timeout" => stage,
+        _ => "start",
+    };
+    let safe = code.and_then(machine_code);
+    let note = if let Some(status) = status {
+        Some(format!("HTTP {status}"))
+    } else if matches!(
+        detail,
+        Some("timeout" | "export status failed" | "file too large" | "could not be read")
+    ) {
+        detail.map(str::to_string)
+    } else {
+        None
+    };
+    let mut message = format!("Qualtrics response export failed at {stage}");
+    if let Some(note) = note {
+        message.push_str(&format!(" ({note})"));
+    }
+    if let Some(code) = safe.as_deref() {
+        message.push_str(&format!(" [{code}]"));
+    }
+    message.push('.');
+    let http = status
+        .filter(|value| *value >= 400)
+        .unwrap_or(if detail == Some("timeout") || stage == "timeout" {
+            504
+        } else {
+            502
+        });
+    match http {
+        401 | 403 => AppError::Unauthorized,
+        429 => AppError::RateLimited,
+        404 => AppError::NotFound(message),
+        _ => AppError::Api(message),
     }
 }
 
+fn from_reject(stage: &str, reject: RemoteReject) -> AppError {
+    export_failure(stage, Some(reject.status), reject.code.as_deref(), None)
+}
+
+/// One progress body. `percentComplete` is not enough: the file id is usable
+/// only when Qualtrics reports `status: complete`.
+pub fn progress_view(body: &Value) -> AppResult<Option<String>> {
+    let result = match body.get("result") {
+        Some(Value::Object(_)) => body.get("result").unwrap(),
+        _ => return Err(export_failure("poll", Some(502), None, None)),
+    };
+    let status = result
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if status == "failed" {
+        let code = result
+            .pointer("/error/code")
+            .and_then(Value::as_str)
+            .or_else(|| body.pointer("/meta/error/errorCode").and_then(Value::as_str));
+        return Err(export_failure("poll", None, code, Some("export status failed")));
+    }
+    if status == "complete" {
+        if let Some(file_id) = result.get("fileId").and_then(Value::as_str) {
+            if !file_id.is_empty() {
+                return Ok(Some(file_id.to_string()));
+            }
+        }
+    }
+    Ok(None)
+}
+
 async fn start_export(client: &QualtricsClient, survey_id: &str) -> AppResult<(String, ExportMode)> {
-    let mut last = AppError::Api("Qualtrics response export failed (HTTP 502).".into());
+    let mut last = export_failure("start", Some(502), None, None);
     for (mode, body) in super::export_request_bodies() {
         match client
-            .post(&format!("surveys/{survey_id}/export-responses"), &body)
+            .export_json(
+                reqwest::Method::POST,
+                &format!("surveys/{survey_id}/export-responses"),
+                Some(&body),
+            )
             .await
         {
             Ok(resp) => {
@@ -53,65 +120,50 @@ async fn start_export(client: &QualtricsClient, survey_id: &str) -> AppResult<(S
                         return Ok((progress.to_string(), mode));
                     }
                 }
-                last = AppError::Api("Qualtrics response export failed (HTTP 502).".into());
+                last = export_failure("start", Some(502), None, None);
             }
-            Err(AppError::Unauthorized) => return Err(AppError::Unauthorized),
-            Err(AppError::RateLimited) => return Err(AppError::RateLimited),
-            Err(AppError::NotFound(_)) => {
-                return Err(AppError::NotFound(
-                    "Qualtrics response export failed (HTTP 404).".into(),
-                ));
+            Err(reject) if reject.status == 401 || reject.status == 403 || reject.status == 429 || reject.status == 404 => {
+                return Err(from_reject("start", reject));
             }
-            Err(err) => last = err,
+            Err(reject) => last = from_reject("start", reject),
         }
     }
-    Err(static_export(last))
+    Err(last)
 }
 
-async fn poll_export(client: &QualtricsClient, survey_id: &str, progress_id: &str) -> AppResult<String> {
-    for _ in 0..90 {
-        let body = client
-            .get(&format!("surveys/{survey_id}/export-responses/{progress_id}"))
-            .await
-            .map_err(static_export)?;
-        let result = body.get("result").cloned().unwrap_or(Value::Null);
-        let status = result
-            .get("status")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_ascii_lowercase();
-        if status == "failed" {
-            return Err(AppError::Api("Qualtrics response export failed.".into()));
-        }
-        let file_id = result.get("fileId").and_then(Value::as_str).unwrap_or("");
-        let percent = result.get("percentComplete").and_then(Value::as_f64);
-        let finished = status == "complete"
-            || status == "success"
-            || percent == Some(100.0);
-        if !file_id.is_empty() && finished && matches!(status.as_str(), "complete" | "success" | "") {
-            return Ok(file_id.to_string());
-        }
-        tokio::time::sleep(Duration::from_secs(2)).await;
-    }
-    Err(AppError::Api(
-        "Qualtrics response export did not finish in time.".into(),
-    ))
-}
-
-async fn download_responses(
+async fn download_one(
     client: &QualtricsClient,
     survey_id: &str,
+    polls_total: &mut u32,
 ) -> AppResult<(Vec<ParsedResponse>, ExportMode)> {
     let (progress_id, mode) = start_export(client, survey_id).await?;
-    let file_id = poll_export(client, survey_id, &progress_id).await?;
+    let mut polls_survey = 0u32;
+    let file_id = loop {
+        let body = client
+            .export_json(
+                reqwest::Method::GET,
+                &format!("surveys/{survey_id}/export-responses/{progress_id}"),
+                None,
+            )
+            .await
+            .map_err(|reject| from_reject("poll", reject))?;
+        if let Some(file_id) = progress_view(&body)? {
+            break file_id;
+        }
+        *polls_total += 1;
+        polls_survey += 1;
+        if polls_survey > POLL_LIMIT_PER_SURVEY || *polls_total > POLL_LIMIT_TOTAL {
+            return Err(export_failure("poll", None, None, Some("timeout")));
+        }
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    };
     let mut bytes = client
         .get_bytes(&format!(
             "surveys/{survey_id}/export-responses/{file_id}/file"
         ))
-        .await
-        .map_err(static_export)?;
+        .await?;
     let parsed = parse_export_bytes(&mut bytes).map_err(|_| {
-        AppError::Api("Qualtrics response export could not be read.".into())
+        export_failure("parse", None, None, Some("could not be read"))
     });
     wipe(&mut bytes);
     Ok((parsed?, mode))
@@ -228,15 +280,22 @@ pub async fn load_report(
     let mut responses = Vec::new();
     let mut mode = ExportMode::Columns;
     let mut copy_export_failed = false;
+    let mut polls_total = 0u32;
     for survey in project.survey_rotation() {
-        match download_responses(client, &survey.id).await {
+        match download_one(client, &survey.id, &mut polls_total).await {
             Ok((found, used)) => {
                 responses.extend(found);
                 mode = wider(mode, used);
             }
-            // A leftover copy that Qualtrics rejects (including HTTP 400) must
-            // not hide completions from the profile's own survey.
-            Err(_) if survey.id != primary => copy_export_failed = true,
+            // A leftover copy that Qualtrics rejects must not hide the profile survey.
+            // A copy that uses up the poll budget stops there and keeps what the
+            // profile survey already contributed.
+            Err(_) if survey.id != primary => {
+                copy_export_failed = true;
+                if polls_total > POLL_LIMIT_TOTAL {
+                    break;
+                }
+            }
             Err(err) => return Err(err),
         }
     }
@@ -312,4 +371,50 @@ async fn collect_invitations(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn progress_waits_for_complete_and_keeps_only_a_machine_code() {
+        let pending = progress_view(&json!({
+            "result": {
+                "status": "inProgress",
+                "percentComplete": 100.0,
+                "fileId": "FILE1",
+                "error": {"message": "ada@example.com", "code": "not a code"}
+            }
+        }))
+        .unwrap();
+        assert!(pending.is_none());
+
+        let ready = progress_view(&json!({
+            "result": {"status": "complete", "percentComplete": 100, "fileId": "FILE1"}
+        }))
+        .unwrap();
+        assert_eq!(ready.as_deref(), Some("FILE1"));
+
+        let err = progress_view(&json!({
+            "result": {
+                "status": "failed",
+                "error": {"code": "QE_9", "message": "ada@example.com", "context": {"column": "RecipientID"}}
+            }
+        }))
+        .unwrap_err();
+        let text = err.to_string();
+        assert!(text.contains("at poll (export status failed) [QE_9]."));
+        assert!(!text.contains("ada@example.com"));
+        assert!(!text.contains("RecipientID"));
+    }
+
+    #[test]
+    fn unsafe_error_code_is_omitted() {
+        let err = export_failure("start", Some(400), Some("RecipientID missing"), None);
+        let text = err.to_string();
+        assert!(text.contains("at start (HTTP 400)."));
+        assert!(!text.contains("RecipientID"));
+    }
 }

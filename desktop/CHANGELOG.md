@@ -5,6 +5,8 @@ All notable changes to QualSched are documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- Loading controls show an indeterminate spinner and a cumulative elapsed time. It starts with the operation, keeps running through that operation's steps, and resets only when a new operation starts.
+- Acquisition export errors name the stage (`start`, `poll`, `download`, or `parse`), the HTTP status, and a Qualtrics machine error code when one was returned. Polling stops after a fixed number of checks, and a response file larger than 32 MiB is discarded instead of kept in memory.
 - Acquisition no longer sends guessed embedded-data field names to Qualtrics.
   Those names made the response export return HTTP 400, including on the
   fallbacks that still sent them.

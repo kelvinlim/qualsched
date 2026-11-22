@@ -2,6 +2,7 @@
   import * as api from "@qualsched/api";
   import { app } from "../lib/state.svelte";
   import { errorMessage, type ImportPreview } from "../lib/types";
+  import BusyMark from "../components/BusyMark.svelte";
 
   let yamlName = $state("");
   let yamlText = $state("");
@@ -13,6 +14,7 @@
   let targetAccountId = $state("");
   let error = $state("");
   let busy = $state(false);
+  let busyOp = $state(0);
   let doneMessage = $state("");
 
   async function readFile(file: File): Promise<string> {
@@ -40,6 +42,7 @@
 
   async function loadPreview() {
     if (!yamlText) return;
+    busyOp += 1;
     busy = true;
     error = "";
     try {
@@ -57,6 +60,7 @@
 
   async function confirm() {
     if (!preview) return;
+    busyOp += 1;
     busy = true;
     error = "";
     try {
@@ -205,7 +209,11 @@
   </div>
 
   <button class="primary" onclick={loadPreview} disabled={!yamlText || busy}>
-    {busy ? "Reading…" : "Read config"}
+    {#if busy && !preview}
+      <BusyMark operation={`import-${busyOp}`} label="Reading" />
+    {:else}
+      Read config
+    {/if}
   </button>
 </div>
 
@@ -314,7 +322,11 @@
 
     <div class="row">
       <button class="primary" onclick={confirm} disabled={busy}>
-        {busy ? "Importing…" : "Import"}
+        {#if busy}
+          <BusyMark operation={`import-${busyOp}`} label="Importing" />
+        {:else}
+          Import
+        {/if}
       </button>
       {#if needsToken}
         <span class="hint">

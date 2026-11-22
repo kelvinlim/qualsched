@@ -12,6 +12,7 @@
     windowSummary,
   } from "../lib/acquisition-view";
   import { app } from "../lib/state.svelte";
+  import BusyMark from "../components/BusyMark.svelte";
   import {
     errorMessage,
     type AcquisitionReport,
@@ -21,6 +22,8 @@
   let report = $state<AcquisitionReport | null>(null);
   let error = $state("");
   let loading = $state(false);
+  let loadOp = $state(0);
+  let loadController: AbortController | null = null;
   let activeOnly = $state(true);
   let span = $state<"7" | "study">("7");
   let marking = $state("");
@@ -44,25 +47,36 @@
     if (accountId && projectId) void load(accountId, projectId);
     return () => {
       report = null;
+      loadController?.abort();
     };
   });
 
   async function load(accountId = app.account?.id, projectId = app.project?.id) {
     if (!accountId || !projectId) return;
+    loadController?.abort();
+    const controller = new AbortController();
+    loadController = controller;
+    loadOp += 1;
     loading = true;
     error = "";
     try {
-      const next = await api.getAcquisition(accountId, projectId);
+      const next = await api.getAcquisition(accountId, projectId, controller.signal);
+      if (controller.signal.aborted) return;
       if (app.selectedAccountId === accountId && app.selectedProjectId === projectId) {
         report = next;
       }
     } catch (e) {
+      if (controller.signal.aborted) return;
       if (app.selectedAccountId === accountId && app.selectedProjectId === projectId) {
         report = null;
         error = errorMessage(e);
       }
     } finally {
-      if (app.selectedAccountId === accountId && app.selectedProjectId === projectId) {
+      if (
+        loadController === controller &&
+        app.selectedAccountId === accountId &&
+        app.selectedProjectId === projectId
+      ) {
         loading = false;
       }
     }
@@ -149,7 +163,11 @@
 
 <div class="row" style="margin-bottom: 0.85rem;">
   <button class="primary" onclick={() => load()} disabled={loading || !app.hasProject}>
-    {loading ? "Loading…" : "Refresh"}
+    {#if loading}
+      <BusyMark operation={`acquisition-${loadOp}`} label="Loading" />
+    {:else}
+      Refresh
+    {/if}
   </button>
   <label>
     <input type="checkbox" bind:checked={activeOnly} />
@@ -190,7 +208,9 @@
 {/if}
 
 {#if loading && !report}
-  <div class="empty">Loading completion counts…</div>
+  <div class="empty">
+    <BusyMark operation={`acquisition-${loadOp}`} label="Loading completion counts" />
+  </div>
 {:else if report && shown.length === 0}
   <div class="empty">
     {report.rows.length === 0 ? "No participants on this mailing list." : "No active participants. Turn off Active only to see everyone."}

@@ -5,12 +5,14 @@
   import { app, newProject } from "../lib/state.svelte";
   import { errorMessage, type Project } from "../lib/types";
   import ApiDropdown from "../components/ApiDropdown.svelte";
+  import BusyMark from "../components/BusyMark.svelte";
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
 
   let draft = $state<Project | null>(null);
   let error = $state("");
   let notice = $state("");
   let busy = $state(false);
+  let busyOp = $state(0);
   let confirmDelete = $state(false);
   let confirmForgetCopies = $state(false);
   let messagePreview = $state("");
@@ -64,6 +66,7 @@
 
   async function forgetCopies() {
     if (!draft || !app.account) return;
+    busyOp += 1;
     busy = true;
     error = "";
     notice = "";
@@ -90,6 +93,7 @@
 
   async function save() {
     if (!draft || !app.account) return;
+    busyOp += 1;
     busy = true;
     error = "";
     notice = "";
@@ -108,6 +112,7 @@
 
   async function removeProject() {
     if (!draft || !app.account) return;
+    busyOp += 1;
     busy = true;
     try {
       app.apply(await api.deleteProject(app.account.id, draft.id));
@@ -370,6 +375,9 @@
 
         <div class="row">
           <button class="primary" onclick={save} disabled={busy || !!slotsError}>Save</button>
+          {#if busy}
+            <BusyMark operation={`project-${busyOp}`} label="Working" />
+          {/if}
           <span class="spacer"></span>
           <button class="danger" onclick={() => (confirmDelete = true)} disabled={busy}>
             Delete profile

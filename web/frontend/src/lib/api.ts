@@ -171,11 +171,70 @@ export const getMessageText = (accountId: string, messageId: string) =>
 
 // --- contacts (live Qualtrics mailing list; never stored) ---------------
 
-export const getAcquisition = (accountId: string, projectId: string) =>
-  request<AcquisitionReport>(
-    `/api/accounts/${accountId}/projects/${projectId}/acquisition`,
-    { cache: "no-store" },
-  );
+function pause(ms: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("aborted", "AbortError"));
+      return;
+    }
+    const id = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(id);
+        reject(new DOMException("aborted", "AbortError"));
+      },
+      { once: true },
+    );
+  });
+}
+
+export async function getAcquisition(
+  accountId: string,
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<AcquisitionReport> {
+  const attempt = `a${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  const path = `/api/accounts/${accountId}/projects/${projectId}/acquisition`;
+  for (;;) {
+    const res = await fetch(withBase(path), {
+      credentials: "include",
+      cache: "no-store",
+      signal,
+      headers: { "X-Qualsched-Attempt": attempt },
+    });
+    const text = await res.text();
+    let body: unknown = null;
+    if (text) {
+      try {
+        body = JSON.parse(text);
+      } catch {
+        body = text;
+      }
+    }
+    if (res.status === 202 && body && typeof body === "object" && "pending" in body) {
+      const stage = (body as { stage?: unknown }).stage;
+      if (stage !== "start" && stage !== "poll" && stage !== "download" && stage !== "parse") {
+        throw { kind: "http", message: "Qualtrics response export failed at poll.", retryable: true };
+      }
+      await pause(1500, signal);
+      continue;
+    }
+    if (!res.ok) {
+      const detail =
+        body && typeof body === "object" && "detail" in body
+          ? (body as { detail: unknown }).detail
+          : body;
+      if (detail && typeof detail === "object" && "message" in detail) throw detail;
+      throw {
+        kind: "http",
+        message: typeof detail === "string" ? detail : res.statusText || `HTTP ${res.status}`,
+        retryable: res.status >= 500 && res.status !== 501,
+      };
+    }
+    return body as AcquisitionReport;
+  }
+}
 
 export const setAcquisitionStatus = (
   accountId: string,

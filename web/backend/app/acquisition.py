@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import io
 import json
+import threading
 import time
 import zipfile
 from dataclasses import dataclass
@@ -21,6 +22,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import httpx
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -37,7 +39,7 @@ from app.contacts import (
 from app.distributions import parse_send_date, survey_rotation
 from app.errors import app_error
 from app.models import QualtricsAccount, SurveyProfile
-from app.qualtrics import QualtricsClient, QualtricsError
+from app.qualtrics import QualtricsClient, QualtricsError, machine_code
 
 MONITOR_FIELD = "QsMonitor"
 MAX_SPAN_DAYS = 370
@@ -878,77 +880,143 @@ def aggregate(
     )
 
 
-def _static_export_error(exc: QualtricsError) -> QualtricsError:
+# One browser request cannot outlive the 60s proxy in front of the web app.
+# Qualtrics exports are asynchronous, so the web route polls once per request.
+# These caps bound a single survey and the whole profile, including leftover copies.
+EXPORT_BYTE_LIMIT = 32 * 1024 * 1024
+DOWNLOAD_TIMEOUT_S = 40.0
+POLL_LIMIT_PER_SURVEY = 160
+POLL_LIMIT_TOTAL = 240
+EXPORT_DEADLINE_S = 8 * 60
+
+_EXPORT_DETAILS = frozenset({"timeout", "export status failed", "file too large", "could not be read"})
+_JOBS: dict[tuple[int, str, str], _ExportJob] = {}
+_JOB_LOCK = threading.Lock()
+
+
+def reset_acquisition_jobs() -> None:
+    with _JOB_LOCK:
+        _JOBS.clear()
+
+
+def export_failure(
+    stage: str,
+    *,
+    status: int | None = None,
+    code: str | None = None,
+    detail: str | None = None,
+) -> QualtricsError:
+    """Stage, HTTP status, and a machine error code. Never a Qualtrics sentence."""
+    if stage not in {"start", "poll", "download", "parse", "timeout"}:
+        stage = "start"
+    safe = machine_code(code)
+    note = None
+    if isinstance(status, int):
+        note = f"HTTP {status}"
+    elif detail in _EXPORT_DETAILS:
+        note = detail
+    message = f"Qualtrics response export failed at {stage}"
+    if note:
+        message += f" ({note})"
+    if safe:
+        message += f" [{safe}]"
+    message += "."
+    http = 502
+    if isinstance(status, int) and status >= 400:
+        http = status
+    elif detail == "timeout" or stage == "timeout":
+        http = 504
+    return QualtricsError(http, "Api", message, code=safe)
+
+
+def _tagged(exc: QualtricsError, stage: str) -> QualtricsError:
     if exc.status in (401, 403):
         return QualtricsError(401, "Unauthorized", "Qualtrics rejected the API token.")
     if exc.status == 429:
         return QualtricsError(
             429, "RateLimited", "Qualtrics rate-limited the request.", retryable=True
         )
-    return QualtricsError(
-        exc.status if exc.status >= 400 else 502,
-        "Api",
-        f"Qualtrics response export failed (HTTP {exc.status}).",
-        retryable=exc.retryable,
-    )
+    if exc.message.startswith("Qualtrics response export failed at "):
+        return exc
+    return export_failure(stage, status=exc.status, code=exc.code)
 
 
 def _start_export(client: QualtricsClient, survey_id: str) -> tuple[str, ExportMode]:
-    last: QualtricsError | None = None
+    last_status = 502
+    last_code: str | None = None
     for mode, body in export_request_bodies():
         try:
-            resp = client.post(f"surveys/{survey_id}/export-responses", body)
+            resp = client.post(f"surveys/{survey_id}/export-responses", body, timeout=20)
+        except httpx.TimeoutException:
+            raise export_failure("start", detail="timeout") from None
         except QualtricsError as exc:
             if exc.status in (401, 403, 429, 404):
-                raise _static_export_error(exc) from None
-            last = exc
+                raise _tagged(exc, "start") from None
+            last_status = exc.status
+            last_code = exc.code
             continue
         result = resp.get("result") if isinstance(resp, dict) else None
         progress = result.get("progressId") if isinstance(result, dict) else None
         if isinstance(progress, str) and progress:
             return progress, mode
-        last = QualtricsError(502, "Api", "missing progress id")
-    status = last.status if last else 502
-    raise QualtricsError(status, "Api", f"Qualtrics response export failed (HTTP {status}).")
+        last_status = 502
+        last_code = None
+    raise export_failure("start", status=last_status, code=last_code)
 
 
-def _poll_export(
-    client: QualtricsClient,
-    survey_id: str,
-    progress_id: str,
-    sleep,
-) -> str:
-    for _ in range(90):
-        try:
-            body = client.get(f"surveys/{survey_id}/export-responses/{progress_id}")
-        except QualtricsError as exc:
-            raise _static_export_error(exc) from None
-        result = body.get("result") if isinstance(body, dict) else None
-        if not isinstance(result, dict):
-            raise QualtricsError(502, "Api", "Qualtrics response export failed (HTTP 502).")
-        status = str(result.get("status") or "").lower()
-        file_id = result.get("fileId")
-        if status == "failed":
-            raise QualtricsError(502, "Api", "Qualtrics response export failed.")
-        percent = result.get("percentComplete")
-        finished = status in {"complete", "success"} or percent in (100, 100.0)
-        if isinstance(file_id, str) and file_id and finished and status in {"complete", "success", ""}:
-            return file_id
-        sleep(2)
-    raise QualtricsError(504, "Api", "Qualtrics response export did not finish in time.")
+def progress_view(body: Any) -> tuple[str, str | None]:
+    """One Get Response Export Progress body.
+
+    Returns ``("ready", file_id)``, ``("pending", None)``, or raises on
+    ``failed``. ``percentComplete`` is not a download signal: Qualtrics
+    documents that the file exists only once ``status`` is ``complete``.
+    """
+    result = body.get("result") if isinstance(body, dict) else None
+    if not isinstance(result, dict):
+        raise export_failure("poll", status=502)
+    status = str(result.get("status") or "").lower()
+    if status == "failed":
+        err = result.get("error") if isinstance(result.get("error"), dict) else {}
+        code = machine_code(err.get("code")) if isinstance(err, dict) else None
+        meta = body.get("meta") if isinstance(body, dict) else None
+        if code is None and isinstance(meta, dict):
+            meta_err = meta.get("error") if isinstance(meta.get("error"), dict) else {}
+            if isinstance(meta_err, dict):
+                code = machine_code(meta_err.get("errorCode"))
+        raise export_failure("poll", detail="export status failed", code=code)
+    file_id = result.get("fileId")
+    if status == "complete" and isinstance(file_id, str) and file_id:
+        return "ready", file_id
+    return "pending", None
 
 
-def _download_responses(client: QualtricsClient, survey_id: str, sleep) -> tuple[list[ParsedResponse], ExportMode]:
-    progress_id, mode = _start_export(client, survey_id)
-    file_id = _poll_export(client, survey_id, progress_id, sleep)
+def _poll_once(client: QualtricsClient, survey_id: str, progress_id: str) -> str | None:
     try:
-        blob = client.get_bytes(f"surveys/{survey_id}/export-responses/{file_id}/file")
+        body = client.get(f"surveys/{survey_id}/export-responses/{progress_id}", timeout=20)
+    except httpx.TimeoutException:
+        raise export_failure("poll", detail="timeout") from None
     except QualtricsError as exc:
-        raise _static_export_error(exc) from None
+        raise _tagged(exc, "poll") from None
+    kind, file_id = progress_view(body)
+    if kind == "ready":
+        return file_id
+    return None
+
+
+def _read_export(client: QualtricsClient, survey_id: str, file_id: str) -> bytearray:
+    path = f"surveys/{survey_id}/export-responses/{file_id}/file"
+    limited = getattr(client, "get_bytes_limited", None)
     try:
-        return parse_export_bytes(blob), mode
-    finally:
+        if limited is not None:
+            blob = limited(path, EXPORT_BYTE_LIMIT, DOWNLOAD_TIMEOUT_S)
+        else:
+            blob = client.get_bytes(path)
+    except QualtricsError as exc:
+        raise _tagged(exc, "download") from None
+    if len(blob) > EXPORT_BYTE_LIMIT:
         _wipe(blob)
+        raise export_failure("download", detail="file too large")
+    return blob
 
 
 def _expiration(element: dict[str, Any]) -> datetime | None:
@@ -989,16 +1057,160 @@ def _int_field(embedded: dict[str, str], key: str) -> int:
 _MODE_RANK = {"columns": 0, "metadata": 1, "no-answers": 2, "full": 3}
 
 
-def load_report(
+@dataclass
+class PendingExport:
+    stage: str
+
+
+@dataclass
+class _ExportJob:
+    attempt: str
+    primary: str
+    survey_ids: list[str]
+    participants: list[Participant]
+    invitations: list[Invitation]
+    sms_missing: bool
+    moment: datetime
+    profile_timezone: str
+    deadline: float
+    index: int = 0
+    phase: str = "create"
+    progress_id: str | None = None
+    mode: ExportMode = "columns"
+    responses: list[ParsedResponse] | None = None
+    copy_failed: bool = False
+    polls: int = 0
+    polls_survey: int = 0
+    poll_limit_survey: int = POLL_LIMIT_PER_SURVEY
+    poll_limit_total: int = POLL_LIMIT_TOTAL
+
+    def __post_init__(self) -> None:
+        if self.responses is None:
+            self.responses = []
+
+
+def _advance_survey(job: _ExportJob) -> bool:
+    job.index += 1
+    job.phase = "create"
+    job.progress_id = None
+    job.polls_survey = 0
+    return job.index < len(job.survey_ids)
+
+
+def _report_from_job(job: _ExportJob) -> AcquisitionReport:
+    responses = job.responses or []
+    report = aggregate(
+        job.participants,
+        job.invitations,
+        responses,
+        now=job.moment,
+        profile_timezone=job.profile_timezone,
+        export_mode=job.mode,
+    )
+    if job.mode != "columns":
+        report.limitations.append(
+            "Qualtrics rejected a filtered response export, so a broader file was "
+            "read in memory and reduced to completion fields before counting. Survey "
+            "answers were not kept, and names, email, IP, and location were not requested."
+        )
+    if job.copy_failed:
+        report.limitations.append(
+            "A leftover survey copy could not be exported. Completions recorded "
+            "only on that copy are not in these counts."
+        )
+    if job.sms_missing:
+        report.limitations.append(
+            "SMS invitations could not be listed because Qualtrics returned not found. "
+            "Expected counts include only the invitation lists that responded."
+        )
+    return report
+
+
+def _skip_copy_or_raise(job: _ExportJob, primary: bool, exc: QualtricsError | None = None) -> AcquisitionReport | None:
+    if primary:
+        if exc is not None:
+            raise exc
+        return None
+    job.copy_failed = True
+    if _advance_survey(job):
+        return None
+    return _report_from_job(job)
+
+
+def _step_export(job: _ExportJob, client: QualtricsClient, clock) -> AcquisitionReport | PendingExport:
+    """Create, poll once, or download. A still-running export returns pending."""
+    while True:
+        if clock() > job.deadline:
+            if job.index > 0:
+                job.copy_failed = True
+                return _report_from_job(job)
+            raise export_failure("poll", detail="timeout")
+        survey_id = job.survey_ids[job.index]
+        primary = survey_id == job.primary
+        if job.phase == "create":
+            try:
+                progress, used = _start_export(client, survey_id)
+            except QualtricsError as exc:
+                done = _skip_copy_or_raise(job, primary, exc)
+                if done is not None:
+                    return done
+                continue
+            job.progress_id = progress
+            if _MODE_RANK[used] > _MODE_RANK[job.mode]:
+                job.mode = used
+            job.phase = "poll"
+        try:
+            file_id = _poll_once(client, survey_id, job.progress_id or "")
+        except QualtricsError as exc:
+            done = _skip_copy_or_raise(job, primary, exc)
+            if done is not None:
+                return done
+            continue
+        if file_id is None:
+            job.polls += 1
+            job.polls_survey += 1
+            if (
+                job.polls_survey > job.poll_limit_survey
+                or job.polls > job.poll_limit_total
+                or clock() > job.deadline
+            ):
+                if not primary:
+                    job.copy_failed = True
+                    if not _advance_survey(job):
+                        return _report_from_job(job)
+                    continue
+                raise export_failure("poll", detail="timeout")
+            return PendingExport("poll")
+        try:
+            blob = _read_export(client, survey_id, file_id)
+            try:
+                found = parse_export_bytes(blob)
+            except AcquisitionParseError:
+                raise export_failure("parse", detail="could not be read") from None
+            finally:
+                _wipe(blob)
+        except QualtricsError as exc:
+            done = _skip_copy_or_raise(job, primary, exc)
+            if done is not None:
+                return done
+            continue
+        assert job.responses is not None
+        job.responses.extend(found)
+        if not _advance_survey(job):
+            return _report_from_job(job)
+
+
+def _new_job(
     client: QualtricsClient,
     account: QualtricsAccount,
     profile: SurveyProfile,
     *,
-    now: datetime | None = None,
-    sleep=time.sleep,
-) -> AcquisitionReport:
-    """Fetch contacts, listed invitations, and response exports. Nothing is written."""
-    moment = now or datetime.now(UTC)
+    attempt: str,
+    moment: datetime,
+    clock,
+    poll_limit_survey: int,
+    poll_limit_total: int,
+) -> _ExportJob:
     directory = account.default_directory
     mailing_list = profile.mailing_list_id
     raw_contacts = list_raw(client, directory, mailing_list)
@@ -1064,49 +1276,107 @@ def load_report(
                         expire=_expiration(element),
                     )
                 )
-
-    responses: list[ParsedResponse] = []
-    mode: ExportMode = "columns"
-    copy_export_failed = False
-    for survey in survey_rotation(profile):
-        try:
-            found, used = _download_responses(client, survey.id, sleep)
-        except QualtricsError:
-            # A leftover survey copy that Qualtrics rejects must not hide the
-            # profile survey. Only a missing copy was previously ignored; a 400
-            # on that copy aborted the whole screen.
-            if survey.id != primary:
-                copy_export_failed = True
-                continue
-            raise
-        responses.extend(found)
-        if _MODE_RANK[used] > _MODE_RANK[mode]:
-            mode = used
-    report = aggregate(
-        participants,
-        invitations,
-        responses,
-        now=moment,
+    return _ExportJob(
+        attempt=attempt,
+        primary=primary,
+        survey_ids=[survey.id for survey in survey_rotation(profile)],
+        participants=participants,
+        invitations=invitations,
+        sms_missing=sms_missing,
+        moment=moment,
         profile_timezone=profile.timezone or "",
-        export_mode=mode,
+        deadline=clock() + EXPORT_DEADLINE_S,
+        poll_limit_survey=poll_limit_survey,
+        poll_limit_total=poll_limit_total,
     )
-    if mode != "columns":
-        report.limitations.append(
-            "Qualtrics rejected a filtered response export, so a broader file was "
-            "read in memory and reduced to completion fields before counting. Survey "
-            "answers were not kept, and names, email, IP, and location were not requested."
+
+
+def acquisition_step(
+    client: QualtricsClient,
+    account: QualtricsAccount,
+    profile: SurveyProfile,
+    *,
+    user_id: int,
+    attempt: str,
+    now: datetime | None = None,
+    clock=time.monotonic,
+    poll_limit_survey: int = POLL_LIMIT_PER_SURVEY,
+    poll_limit_total: int = POLL_LIMIT_TOTAL,
+) -> AcquisitionReport | PendingExport:
+    """One slice of an acquisition load.
+
+    The web route calls this once per browser request. A Qualtrics export that
+    is still ``inProgress`` is remembered in this process only, keyed by the
+    user and profile, and the next request with the same attempt continues it.
+    A new attempt drops that memory. Nothing is written to disk.
+    """
+    key = (user_id, account.id, profile.id)
+    moment = now or datetime.now(UTC)
+    with _JOB_LOCK:
+        job = _JOBS.get(key)
+        if job is not None and job.attempt != attempt:
+            _JOBS.pop(key, None)
+            job = None
+        elif job is not None and clock() > job.deadline:
+            _JOBS.pop(key, None)
+            raise export_failure("poll", detail="timeout")
+    if job is None:
+        job = _new_job(
+            client,
+            account,
+            profile,
+            attempt=attempt,
+            moment=moment,
+            clock=clock,
+            poll_limit_survey=poll_limit_survey,
+            poll_limit_total=poll_limit_total,
         )
-    if copy_export_failed:
-        report.limitations.append(
-            "A leftover survey copy could not be exported. Completions recorded "
-            "only on that copy are not in these counts."
+    try:
+        outcome = _step_export(job, client, clock)
+    except Exception:
+        with _JOB_LOCK:
+            if _JOBS.get(key) is job:
+                _JOBS.pop(key, None)
+        raise
+    with _JOB_LOCK:
+        if isinstance(outcome, PendingExport):
+            _JOBS[key] = job
+        elif _JOBS.get(key) is job:
+            _JOBS.pop(key, None)
+    return outcome
+
+
+def load_report(
+    client: QualtricsClient,
+    account: QualtricsAccount,
+    profile: SurveyProfile,
+    *,
+    now: datetime | None = None,
+    sleep=time.sleep,
+    user_id: int = 0,
+    attempt: str | None = None,
+    clock=time.monotonic,
+    poll_limit_survey: int = POLL_LIMIT_PER_SURVEY,
+    poll_limit_total: int = POLL_LIMIT_TOTAL,
+) -> AcquisitionReport:
+    """Fetch contacts, listed invitations, and response exports. Nothing is written."""
+    token = attempt or f"direct-{time.monotonic_ns()}"
+    while True:
+        outcome = acquisition_step(
+            client,
+            account,
+            profile,
+            user_id=user_id,
+            attempt=token,
+            now=now,
+            clock=clock,
+            poll_limit_survey=poll_limit_survey,
+            poll_limit_total=poll_limit_total,
         )
-    if sms_missing:
-        report.limitations.append(
-            "SMS invitations could not be listed because Qualtrics returned not found. "
-            "Expected counts include only the invitation lists that responded."
-        )
-    return report
+        if isinstance(outcome, PendingExport):
+            sleep(2)
+            continue
+        return outcome
 
 
 def set_monitor_status(
