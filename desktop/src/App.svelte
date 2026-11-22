@@ -111,7 +111,7 @@
          banner explaining that nothing could be read. -->
     {#if app.loaded}
       <nav class="breadcrumb" aria-label="Breadcrumb">
-        {#if app.account}
+        {#if app.hasAccount && app.account}
           <button class="link" onclick={() => app.go("accounts")}>
             {app.account.name || "(unnamed account)"}
           </button>
@@ -123,6 +123,10 @@
             {app.project
               ? app.project.name || "(unnamed profile)"
               : "Choose a survey profile"}
+          </button>
+        {:else if app.account}
+          <button class="link" onclick={() => app.go("accounts")}>
+            {app.account.name || "(unnamed account)"}
           </button>
         {:else}
           <button class="link" onclick={() => app.go("accounts")}>Choose an account</button>
