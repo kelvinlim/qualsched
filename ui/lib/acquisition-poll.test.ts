@@ -86,4 +86,23 @@ try {
   if (message !== "Qualtrics response export failed at start (HTTP 400) [RTE_2].") throw error;
 }
 
+try {
+  await followAcquisition({
+    request: async () => jsonResponse(202, { pending: true, stage: "elsewhere" }),
+    pause: async () => {},
+  });
+  throw new Error("an unknown pending stage should not look like a report");
+} catch (error) {
+  const message = (error as { message?: string }).message ?? "";
+  if (message !== "Qualtrics response export failed at poll.") throw error;
+}
+
+const token = await followAcquisition({
+  request: async () =>
+    jsonResponse(401, { detail: { kind: "Unauthorized", message: "Qualtrics rejected the API token." } }),
+}).catch((error: { message?: string }) => error);
+if (token.message !== "Qualtrics rejected the API token.") {
+  throw new Error(token.message ?? "missing token message");
+}
+
 console.log("acquisition poll tests ok");

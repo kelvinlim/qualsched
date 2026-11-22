@@ -76,24 +76,33 @@ export async function followAcquisition(options: {
         body = null;
       }
     }
-    if (
-      response.status === 202 &&
-      body &&
-      typeof body === "object" &&
-      "pending" in body &&
-      PENDING_STAGES.has(String((body as { stage?: unknown }).stage))
-    ) {
-      await pause(pauseMs, options.signal);
-      continue;
+    if (response.status === 202) {
+      const stage =
+        body && typeof body === "object" && "pending" in body
+          ? String((body as { stage?: unknown }).stage)
+          : "";
+      if (PENDING_STAGES.has(stage)) {
+        await pause(pauseMs, options.signal);
+        continue;
+      }
+      throw {
+        kind: "http",
+        message: "Qualtrics response export failed at poll.",
+        retryable: true,
+      };
     }
     if (!response.ok) {
       const detail =
         body && typeof body === "object" && "detail" in body
           ? (body as { detail: unknown }).detail
           : null;
-      if (detail && typeof detail === "object" && "message" in detail) {
-        const message = String((detail as { message: unknown }).message);
-        if (message.startsWith("Qualtrics response export failed at ")) throw detail;
+      if (
+        detail &&
+        typeof detail === "object" &&
+        "message" in detail &&
+        typeof (detail as { message: unknown }).message === "string"
+      ) {
+        throw detail;
       }
       throw httpFailure(response.status);
     }
