@@ -5,6 +5,9 @@ All notable changes to QualSched Web are documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- Acquisition export no longer fails before it reaches Qualtrics. A per-call deadline was passed into the HTTP client's send method, which rejected it, so the request became an internal error and the page only showed its own 50 second timeout. The page now shows the stage and the error type.
+- The Contacts screen was reloading the mailing list on every pass. Opening it produced a continuous stream of contact requests. It now loads once per selected profile.
+- Acquisition shows a short live status line (connecting, contacts, invitations, which survey is exporting, download, counting) while the timer runs. The web request returns as soon as that status is known; the Qualtrics calls continue in the server process. The page keeps reading that status past the server's export deadline, and a newer load stops the previous one before the next Qualtrics call.
 - Acquisition loading no longer restarts on every tick. The screen's load effect was reading the operation counter it incremented, so Svelte aborted the request and reset the elapsed timer to 0:00. A request that does not answer, or that stays pending past the poll budget, now shows a banner instead of spinning.
 - Acquisition no longer holds one browser request open while Qualtrics builds the response file. Each request performs one progress check. The proxy in front of the app stops at 60 seconds, which cut off a slow export before. A failure now names the stage, the HTTP status, and a machine error code, without the Qualtrics sentence.
 - Loading buttons and status lines show an indeterminate spinner and a cumulative elapsed time. The time starts with the operation, keeps running through retries, and resets when a new operation starts.

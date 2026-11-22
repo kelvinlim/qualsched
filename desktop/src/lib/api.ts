@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { acquisitionEventStatus } from "@qualsched/ui/lib/acquisition-poll";
 
 import type {
   Account,
@@ -92,11 +93,30 @@ export const getMessageText = (accountId: string, messageId: string) =>
 
 // --- contacts -------------------------------------------------------------
 
-export const getAcquisition = (
+export async function getAcquisition(
   accountId: string,
   projectId: string,
   _signal?: AbortSignal,
-) => invoke<AcquisitionReport>("get_acquisition", { accountId, projectId });
+  onStatus?: (status: string) => void,
+): Promise<AcquisitionReport> {
+  const attempt = `d${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  let unlisten: UnlistenFn | undefined;
+  if (onStatus) {
+    unlisten = await listen("acquisition://status", (event) => {
+      const status = acquisitionEventStatus(event.payload, attempt);
+      if (status) onStatus(status);
+    });
+  }
+  try {
+    return await invoke<AcquisitionReport>("get_acquisition", {
+      accountId,
+      projectId,
+      attempt,
+    });
+  } finally {
+    unlisten?.();
+  }
+}
 
 export const setAcquisitionStatus = (
   accountId: string,

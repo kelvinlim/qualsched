@@ -12,8 +12,10 @@ mailing-list contact's ``contactId`` (``CID_…``) or ``contactLookupId``
 
 from __future__ import annotations
 
+import contextvars
 import io
 import json
+import re
 import threading
 import time
 import zipfile
@@ -885,6 +887,9 @@ def aggregate(
 # These caps bound a single survey and the whole profile, including leftover copies.
 EXPORT_BYTE_LIMIT = 32 * 1024 * 1024
 DOWNLOAD_TIMEOUT_S = 40.0
+# One Qualtrics read during contact and invitation listing. The client default
+# is 60s, which is long enough for the browser to give up first.
+LIST_TIMEOUT_S = 15.0
 POLL_LIMIT_PER_SURVEY = 160
 POLL_LIMIT_TOTAL = 240
 EXPORT_DEADLINE_S = 8 * 60
@@ -893,7 +898,7 @@ _EXPORT_DETAILS = frozenset(
     {"timeout", "export status failed", "file too large", "could not be read", "superseded"}
 )
 _JOBS: dict[tuple[int, str, str], _ExportJob] = {}
-_JOB_LOCK = threading.Lock()
+_JOB_LOCK = threading.RLock()
 _NEXT_GENERATION = 0
 _SUPERSEDED: set[tuple[tuple[int, str, str], str]] = set()
 
@@ -901,9 +906,175 @@ _SUPERSEDED: set[tuple[tuple[int, str, str], str]] = set()
 def reset_acquisition_jobs() -> None:
     global _NEXT_GENERATION
     with _JOB_LOCK:
+        for run in _RUNS.values():
+            run.cancelled = True
         _JOBS.clear()
+        _RUNS.clear()
         _SUPERSEDED.clear()
         _NEXT_GENERATION = 0
+
+
+# Phrases the browser may show. Anything else, including an email or a
+# Qualtrics id, is dropped.
+_STATUS_EXACT = frozenset(
+    {
+        "Connecting to Qualtrics",
+        "Loading contacts",
+        "Contacts loaded",
+        "Loading invitations",
+        "Invitations loaded",
+        "Counting completions",
+    }
+)
+_STATUS_PROGRESS = re.compile(
+    r"^(Exporting survey|Waiting for export|Downloading export) "
+    r"([1-9]\d{0,2}) of ([1-9]\d{0,2})$"
+)
+_STATUS_CB: contextvars.ContextVar = contextvars.ContextVar("acquisition_status", default=None)
+_CANCEL_CB: contextvars.ContextVar = contextvars.ContextVar("acquisition_cancel", default=None)
+
+
+def _stop_if_requested() -> None:
+    """A newer attempt should not start the next Qualtrics call."""
+    callback = _CANCEL_CB.get()
+    if callback is not None and callback():
+        raise export_failure("poll", detail="superseded")
+
+
+def status_text(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    if value in _STATUS_EXACT or _STATUS_PROGRESS.fullmatch(value):
+        return value
+    return None
+
+
+def status_log_token(text: str) -> str:
+    if text == "Connecting to Qualtrics":
+        return "connecting"
+    if text == "Loading contacts":
+        return "contacts"
+    if text == "Contacts loaded":
+        return "contacts_loaded"
+    if text == "Loading invitations":
+        return "invitations"
+    if text == "Invitations loaded":
+        return "invitations_loaded"
+    if text == "Counting completions":
+        return "counting"
+    if text.startswith("Exporting survey "):
+        return "export"
+    if text.startswith("Waiting for export "):
+        return "waiting"
+    if text.startswith("Downloading export "):
+        return "download"
+    return "status"
+
+
+def _note(text: str, stage: str) -> None:
+    callback = _STATUS_CB.get()
+    if callback is None:
+        return
+    safe = status_text(text)
+    if safe is None:
+        return
+    callback(safe, stage)
+
+
+def _survey_label(kind: str, index: int, total: int) -> str | None:
+    if index < 1 or total < 1 or index > 999 or total > 999:
+        return None
+    return f"{kind} {index} of {total}"
+
+
+@dataclass
+class _Run:
+    attempt: str
+    generation: int
+    status: str = "Connecting to Qualtrics"
+    stage: str = "start"
+    report: AcquisitionReport | None = None
+    error: QualtricsError | None = None
+    cancelled: bool = False
+
+
+_RUNS: dict[tuple[int, str, str], _Run] = {}
+
+
+def claim_run(user_id: int, account_id: str, profile_id: str, attempt: str) -> tuple[_Run, bool]:
+    """Return the in-memory run and whether this call has to start the worker."""
+    key = (user_id, account_id, profile_id)
+    global _NEXT_GENERATION
+    with _JOB_LOCK:
+        if (key, attempt) in _SUPERSEDED:
+            raise export_failure("poll", detail="superseded")
+        current = _RUNS.get(key)
+        if current is not None and current.attempt == attempt:
+            return current, False
+        if current is not None:
+            current.cancelled = True
+            _SUPERSEDED.add((key, current.attempt))
+        _NEXT_GENERATION += 1
+        run = _Run(attempt=attempt, generation=_NEXT_GENERATION)
+        _RUNS[key] = run
+        return run, True
+
+
+def read_run(run: _Run) -> AcquisitionReport | PendingExport:
+    with _JOB_LOCK:
+        if run.error is not None:
+            raise run.error
+        if run.report is not None:
+            return run.report
+        stage = run.stage if run.stage in {"start", "poll", "download", "parse"} else "poll"
+        return PendingExport(stage, run.status)
+
+
+def publish_status(key: tuple[int, str, str], attempt: str, text: str, stage: str) -> None:
+    safe = status_text(text)
+    if safe is None:
+        return
+    if stage not in {"start", "poll", "download", "parse"}:
+        stage = "start"
+    with _JOB_LOCK:
+        run = _RUNS.get(key)
+        if run is None or run.attempt != attempt or run.cancelled:
+            return
+        run.status = safe
+        run.stage = stage
+
+
+def fail_run(key: tuple[int, str, str], attempt: str, exc: QualtricsError) -> None:
+    with _JOB_LOCK:
+        run = _RUNS.get(key)
+        if run is None or run.attempt != attempt or run.cancelled:
+            return
+        run.error = exc
+
+
+def finish_run(key: tuple[int, str, str], attempt: str, report: AcquisitionReport) -> None:
+    with _JOB_LOCK:
+        run = _RUNS.get(key)
+        if run is None or run.attempt != attempt or run.cancelled:
+            return
+        run.report = report
+
+
+def run_cancelled(key: tuple[int, str, str], attempt: str) -> bool:
+    with _JOB_LOCK:
+        run = _RUNS.get(key)
+        return run is None or run.attempt != attempt or run.cancelled
+
+
+_ERROR_TYPE = re.compile(r"^[A-Za-z][A-Za-z0-9]{0,31}$")
+
+
+def error_type_name(exc: BaseException) -> str:
+    """Exception class name only. The message can quote ids or column names."""
+    name = type(exc).__name__
+    if _ERROR_TYPE.fullmatch(name):
+        return name
+    return "Error"
 
 
 def export_failure(
@@ -912,23 +1083,29 @@ def export_failure(
     status: int | None = None,
     code: str | None = None,
     detail: str | None = None,
+    error_type: str | None = None,
 ) -> QualtricsError:
     """Stage, HTTP status, and a machine error code. Never a Qualtrics sentence."""
     if stage not in {"start", "poll", "download", "parse", "timeout"}:
         stage = "start"
     safe = machine_code(code)
     note = None
+    typed = None
+    if isinstance(error_type, str) and _ERROR_TYPE.fullmatch(error_type):
+        typed = error_type
     if isinstance(status, int):
         note = f"HTTP {status}"
     elif detail in _EXPORT_DETAILS:
         note = detail
+    elif typed:
+        note = typed
     message = f"Qualtrics response export failed at {stage}"
     if note:
         message += f" ({note})"
     if safe:
         message += f" [{safe}]"
     message += "."
-    http = 502
+    http = 500 if typed and not isinstance(status, int) else 502
     if isinstance(status, int) and status >= 400:
         http = status
     elif detail == "timeout" or stage == "timeout":
@@ -1067,8 +1244,10 @@ _MODE_RANK = {"columns": 0, "metadata": 1, "no-answers": 2, "full": 3}
 
 
 @dataclass
+@dataclass
 class PendingExport:
     stage: str
+    status: str = ""
 
 
 @dataclass
@@ -1109,6 +1288,7 @@ def _advance_survey(job: _ExportJob) -> bool:
 
 
 def _report_from_job(job: _ExportJob) -> AcquisitionReport:
+    _note("Counting completions", "parse")
     responses = job.responses or []
     report = aggregate(
         job.participants,
@@ -1178,6 +1358,20 @@ def _step_export(job: _ExportJob, client: QualtricsClient, clock) -> Acquisition
     does not start the next survey. Each of those is its own request so the
     60 second proxy is not holding the file transfer plus another export.
     """
+    total = len(job.survey_ids)
+    current = job.index + 1
+    if job.phase == "download":
+        label = _survey_label("Downloading export", current, total)
+        if label:
+            _note(label, "download")
+    elif job.phase == "create":
+        label = _survey_label("Exporting survey", current, total)
+        if label:
+            _note(label, "start")
+    else:
+        label = _survey_label("Waiting for export", current, total)
+        if label:
+            _note(label, "poll")
     if clock() > job.deadline:
         if job.phase == "download" and job.file_id and job.index == 0:
             outcome = _download_ready(job, client, job.survey_ids[0], True)
@@ -1192,8 +1386,10 @@ def _step_export(job: _ExportJob, client: QualtricsClient, clock) -> Acquisition
     survey_id = job.survey_ids[job.index]
     primary = survey_id == job.primary
     if job.phase == "download":
+        _stop_if_requested()
         return _download_ready(job, client, survey_id, primary)
     if job.phase == "create":
+        _stop_if_requested()
         try:
             progress, used = _start_export(client, survey_id)
         except QualtricsError as exc:
@@ -1205,6 +1401,10 @@ def _step_export(job: _ExportJob, client: QualtricsClient, clock) -> Acquisition
         if _MODE_RANK[used] > _MODE_RANK[job.mode]:
             job.mode = used
         job.phase = "poll"
+        waiting = _survey_label("Waiting for export", current, total)
+        if waiting:
+            _note(waiting, "poll")
+    _stop_if_requested()
     try:
         file_id = _poll_once(client, survey_id, job.progress_id or "")
     except QualtricsError as exc:
@@ -1245,14 +1445,19 @@ def _new_job(
 ) -> _ExportJob:
     directory = account.default_directory
     mailing_list = profile.mailing_list_id
-    raw_contacts = list_raw(client, directory, mailing_list)
+    _stop_if_requested()
+    _note("Loading contacts", "start")
+    raw_contacts = list_raw(client, directory, mailing_list, timeout=LIST_TIMEOUT_S)
     participants: list[Participant] = []
     for raw in raw_contacts:
+        _stop_if_requested()
         contact_id = contact_id_of(raw) or ""
         if not contact_id:
             continue
         try:
-            lookup = resolve_contact_lookup_id(client, directory, mailing_list, raw)
+            lookup = resolve_contact_lookup_id(
+                client, directory, mailing_list, raw, timeout=LIST_TIMEOUT_S
+            )
         except HTTPException:
             lookup = ""
         embedded = embedded_of(raw)
@@ -1272,6 +1477,9 @@ def _new_job(
             )
         )
 
+    _stop_if_requested()
+    _note("Contacts loaded", "start")
+    _note("Loading invitations", "start")
     invitations: list[Invitation] = []
     sms_missing = False
     primary = profile.survey_id.strip()
@@ -1286,9 +1494,10 @@ def _new_job(
         for path in paths:
             # An email-only survey can 404 the SMS collection. That must not hide
             # the email invitations. A missing primary survey still fails the email list.
+            _stop_if_requested()
             sms = path.startswith("distributions/sms")
             try:
-                elements = client.get_elements(path)
+                elements = client.get_elements(path, timeout=LIST_TIMEOUT_S)
             except QualtricsError as exc:
                 if exc.status == 404 and (survey.id != primary or sms):
                     if sms:
@@ -1308,6 +1517,7 @@ def _new_job(
                         expire=_expiration(element),
                     )
                 )
+    _note("Invitations loaded", "start")
     return _ExportJob(
         attempt=attempt,
         primary=primary,
@@ -1337,11 +1547,12 @@ def acquisition_step(
 ) -> AcquisitionReport | PendingExport:
     """One slice of an acquisition load.
 
-    The web route calls this once per browser request. A Qualtrics export that
+    ``load_report`` calls this in a loop. The web route runs that loop on a
+    background thread and returns the in-memory status. A Qualtrics export that
     is still ``inProgress`` is remembered in this process only, keyed by the
-    user and profile, and the next request with the same attempt continues it.
-    A new attempt drops that memory. Nothing is written to disk. The process
-    is one uvicorn worker; a second worker would not see this memory.
+    user and profile, and the same attempt continues it. A new attempt drops
+    that memory. Nothing is written to disk. The process is one uvicorn worker;
+    a second worker would not see this memory.
     """
     key = (user_id, account.id, profile.id)
     moment = now or datetime.now(UTC)
@@ -1437,10 +1648,43 @@ def load_report(
     clock=time.monotonic,
     poll_limit_survey: int = POLL_LIMIT_PER_SURVEY,
     poll_limit_total: int = POLL_LIMIT_TOTAL,
+    stop=None,
 ) -> AcquisitionReport:
     """Fetch contacts, listed invitations, and response exports. Nothing is written."""
     token = attempt or f"direct-{time.monotonic_ns()}"
+    cancel_token = _CANCEL_CB.set(stop)
+    try:
+        return _load_report_body(
+            client,
+            account,
+            profile,
+            token=token,
+            now=now,
+            sleep=sleep,
+            user_id=user_id,
+            clock=clock,
+            poll_limit_survey=poll_limit_survey,
+            poll_limit_total=poll_limit_total,
+        )
+    finally:
+        _CANCEL_CB.reset(cancel_token)
+
+
+def _load_report_body(
+    client,
+    account,
+    profile,
+    *,
+    token: str,
+    now,
+    sleep,
+    user_id: int,
+    clock,
+    poll_limit_survey: int,
+    poll_limit_total: int,
+) -> AcquisitionReport:
     while True:
+        _stop_if_requested()
         outcome = acquisition_step(
             client,
             account,

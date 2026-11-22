@@ -176,11 +176,13 @@ export async function getAcquisition(
   accountId: string,
   projectId: string,
   signal?: AbortSignal,
+  onStatus?: (status: string) => void,
 ): Promise<AcquisitionReport> {
   const attempt = `a${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
   const path = `/api/accounts/${accountId}/projects/${projectId}/acquisition`;
   return followAcquisition({
     signal,
+    onStatus,
     request: (slice) =>
       fetch(withBase(path), {
         credentials: "include",
