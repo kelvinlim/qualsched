@@ -72,8 +72,8 @@ assertEqual(
 );
 assertEqual(
   NAV_ITEMS.filter((n) => n.needsProject).map((n) => n.screen),
-  ["contacts", "schedule", "distributions", "export"],
-  "contacts/schedule/distributions/export still wait on a survey profile",
+  ["contacts", "schedule", "distributions", "acquisition", "export"],
+  "contacts/schedule/distributions/acquisition/export still wait on a survey profile",
 );
 
 function account(dataCenter: string): Account {

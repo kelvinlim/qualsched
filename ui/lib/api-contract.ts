@@ -16,6 +16,8 @@ import type {
   Method,
   Project,
   RemovedContact,
+  AcquisitionReport,
+  MonitorUpdate,
   ScheduleProgress,
   SchedulePreview,
   SendReport,
@@ -77,6 +79,37 @@ export const listMailingLists: (
 export const listMessages: (accountId: string) => Promise<MessageInfo[]> = async () => [];
 export const getMessageText: (accountId: string, messageId: string) => Promise<string> =
   async () => "";
+
+export const getAcquisition: (
+  accountId: string,
+  projectId: string,
+) => Promise<AcquisitionReport> = async () => ({
+  generatedAt: "",
+  definitive: true,
+  prerequisite: "",
+  limitations: [],
+  exportMode: "restricted",
+  excluded: {
+    preview: 0,
+    test: 0,
+    synthetic: 0,
+    spam: 0,
+    unfinished: 0,
+    otherStatus: 0,
+    anonymous: 0,
+    unmatchedRecipient: 0,
+    conflict: 0,
+    duplicateIds: 0,
+    unjoinedInvitations: 0,
+  },
+  rows: [],
+});
+export const setAcquisitionStatus: (
+  accountId: string,
+  projectId: string,
+  contactId: string,
+  status: "active" | "inactive",
+) => Promise<MonitorUpdate> = async () => ({ contactId: "", monitor: "active" });
 
 export const getContacts: (
   accountId: string,

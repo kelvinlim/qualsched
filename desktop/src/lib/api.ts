@@ -5,6 +5,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 
 import type {
   Account,
+  AcquisitionReport,
   AppConfig,
   ContactView,
   DeleteReport,
@@ -15,6 +16,7 @@ import type {
   MailingListInfo,
   MessageInfo,
   Method,
+  MonitorUpdate,
   Project,
   RemovedContact,
   ScheduleProgress,
@@ -89,6 +91,22 @@ export const getMessageText = (accountId: string, messageId: string) =>
   invoke<string>("get_message_text", { accountId, messageId });
 
 // --- contacts -------------------------------------------------------------
+
+export const getAcquisition = (accountId: string, projectId: string) =>
+  invoke<AcquisitionReport>("get_acquisition", { accountId, projectId });
+
+export const setAcquisitionStatus = (
+  accountId: string,
+  projectId: string,
+  contactId: string,
+  status: "active" | "inactive",
+) =>
+  invoke<MonitorUpdate>("set_acquisition_status", {
+    accountId,
+    projectId,
+    contactId,
+    status,
+  });
 
 export const getContacts = (accountId: string, projectId: string) =>
   invoke<ContactView[]>("get_contacts", { accountId, projectId });

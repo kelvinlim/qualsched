@@ -197,6 +197,67 @@ export interface UpdateInfo {
   downloadLabel: string;
 }
 
+export type AcquisitionDayKind = "ratio" | "future" | "none" | "nonStudy" | "unknown";
+
+export interface AcquisitionDay {
+  date: string;
+  kind: AcquisitionDayKind;
+  completed?: number | null;
+  expected?: number | null;
+  later: number;
+}
+
+export interface AcquisitionToDate {
+  completed?: number | null;
+  expected?: number | null;
+  provisional: boolean;
+}
+
+export interface AcquisitionExcluded {
+  preview: number;
+  test: number;
+  synthetic: number;
+  spam: number;
+  unfinished: number;
+  otherStatus: number;
+  anonymous: number;
+  unmatchedRecipient: number;
+  conflict: number;
+  duplicateIds: number;
+  unjoinedInvitations: number;
+}
+
+/** Aggregate completion counts. Not stored. Names are the same labels Contacts shows. */
+export interface AcquisitionRow {
+  contactId: string;
+  displayName: string;
+  monitor: "active" | "inactive";
+  timezone: string;
+  timezoneSource: "contact" | "profile" | "invalid" | "missing";
+  today: string;
+  definitive: boolean;
+  ambiguous: number;
+  unmatchedCompletions: number;
+  duplicateCompletions: number;
+  days: AcquisitionDay[];
+  toDate: AcquisitionToDate;
+}
+
+export interface AcquisitionReport {
+  generatedAt: string;
+  definitive: boolean;
+  prerequisite: string;
+  limitations: string[];
+  exportMode: "restricted" | "embedded" | "metadata";
+  excluded: AcquisitionExcluded;
+  rows: AcquisitionRow[];
+}
+
+export interface MonitorUpdate {
+  contactId: string;
+  monitor: "active" | "inactive";
+}
+
 /** Shape every rejected `invoke` takes — see AppError's Serialize impl in Rust. */
 export interface AppError {
   kind: string;

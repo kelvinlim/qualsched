@@ -4,6 +4,10 @@ All notable changes to QualSched Web are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Acquisition route: server-side response export reduced to completion counts.
+  No new database tables and no participant rows stored.
+
 ## [0.2.3] - 2026-08-30
 
 ### Changed

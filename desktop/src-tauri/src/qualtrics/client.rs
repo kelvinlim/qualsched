@@ -108,6 +108,34 @@ impl QualtricsClient {
         self.send(self.http.delete(self.url(path))).await
     }
 
+    /// Binary download. The error text is only the HTTP status — export files can
+    /// contain participant data and must not be copied into an error or a log.
+    pub async fn get_bytes(&self, path: &str) -> AppResult<Vec<u8>> {
+        let resp = self
+            .prepare(
+                self.http
+                    .get(self.url(path))
+                    .timeout(Duration::from_secs(300)),
+            )
+            .send()
+            .await?;
+        let status = resp.status();
+        if status.as_u16() == 401 || status.as_u16() == 403 {
+            return Err(AppError::Unauthorized);
+        }
+        if status.as_u16() == 429 {
+            return Err(AppError::RateLimited);
+        }
+        if !status.is_success() {
+            let _ = resp.bytes().await;
+            return Err(AppError::Api(format!(
+                "Qualtrics response export failed (HTTP {})",
+                status.as_u16()
+            )));
+        }
+        Ok(resp.bytes().await?.to_vec())
+    }
+
     /// Collect `result.elements` across every page, following the absolute
     /// `result.nextPage` cursor until it is null.
     pub async fn get_elements(&self, path: &str) -> AppResult<Vec<Value>> {

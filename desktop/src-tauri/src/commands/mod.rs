@@ -1,3 +1,4 @@
+pub mod acquisition_cmds;
 pub mod config_cmds;
 pub mod contact_cmds;
 pub mod distribution_cmds;

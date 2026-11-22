@@ -18,8 +18,9 @@ desktop/             Tauri desktop app (v0.2.3): App shell, lib/api.ts (invoke),
 web/                 QualSched Web: FastAPI + MariaDB, frontend shell (login/legal), deploy/
 ```
 
-Adding or refining a screen (Contacts, Schedule, …) is **one change** in `ui/`
-that both apps pick up. Each app keeps its own `lib/api.ts` — desktop uses Tauri
+Adding or refining a screen (Contacts, Schedule, Acquisition, …) is **one change** in `ui/`
+that both apps pick up. The acquisition heatmap — how a completion is matched, and
+what each app is allowed to retain — is described in [docs/ACQUISITION.md](docs/ACQUISITION.md). Each app keeps its own `lib/api.ts` — desktop uses Tauri
 `invoke`, web uses `fetch` + `withBase()` — with the same exported function names
 and types.
 

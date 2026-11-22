@@ -56,6 +56,13 @@ export const NAV_ITEMS: NavItem[] = [
     hint: "Invitations already booked with Qualtrics, and cancelling them",
   },
   {
+    screen: "acquisition",
+    label: "Acquisition",
+    needsAccount: false,
+    needsProject: true,
+    hint: "Completed surveys versus invitations still booked, one row per participant",
+  },
+  {
     screen: "import",
     label: "Import Config",
     needsAccount: true,

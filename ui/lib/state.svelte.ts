@@ -10,6 +10,7 @@ export type ScreenName =
   | "contacts"
   | "schedule"
   | "distributions"
+  | "acquisition"
   | "import"
   | "export"
   | "guide";

@@ -4,6 +4,11 @@ All notable changes to QualSched Web are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Acquisition** screen, shared with desktop: completed surveys versus invitations
+  still listed. The browser receives aggregate counts only. Response exports stay
+  on the server and are not stored.
+
 ## [0.2.3] - 2026-08-30
 
 ### Changed

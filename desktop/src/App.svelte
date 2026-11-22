@@ -7,6 +7,7 @@
   import { app } from "@qualsched/ui/lib/state.svelte";
   import { errorMessage, type UpdateInfo } from "@qualsched/ui/lib/types";
   import AccountsScreen from "@qualsched/ui/screens/AccountsScreen.svelte";
+  import AcquisitionScreen from "@qualsched/ui/screens/AcquisitionScreen.svelte";
   import ContactsScreen from "@qualsched/ui/screens/ContactsScreen.svelte";
   import DistributionsScreen from "@qualsched/ui/screens/DistributionsScreen.svelte";
   import ExportScreen from "@qualsched/ui/screens/ExportScreen.svelte";
@@ -145,6 +146,8 @@
       <ScheduleScreen />
     {:else if app.screen === "distributions"}
       <DistributionsScreen />
+    {:else if app.screen === "acquisition"}
+      <AcquisitionScreen />
     {:else if app.screen === "import"}
       <ImportWizard />
     {:else if app.screen === "export"}
