@@ -98,6 +98,7 @@ def test_preview_maps_eligible_vs_skipped(ctx, monkeypatch):
     body = r.json()
     assert len(body["items"]) == 14  # 7 days × 2 slots
     assert {i["contactId"] for i in body["items"]} == {"CID_ada"}
+    assert {i["contactExtRef"] for i in body["items"]} == {"P1"}
     assert all(i["method"] == "sms" for i in body["items"])
     assert all(i["surveyId"] == "SV_1" for i in body["items"])
     assert all(i["surveyLabel"] == "original" for i in body["items"])
@@ -328,8 +329,12 @@ def test_execute_partial_failure_and_bookkeeping(ctx, monkeypatch):
     report = sent.json()
     assert report["scheduled"] == 13
     assert len(report["failed"]) == 1
+    assert report["failed"][0]["contactId"] == "CID_ada"
+    assert report["failed"][0]["contactExtRef"] == "P1"
     assert report["failed"][0]["retryable"] is True
     assert len(report["bookkeepingFailures"]) == 1
+    assert report["bookkeepingFailures"][0]["contactId"] == "CID_ada"
+    assert report["bookkeepingFailures"][0]["contactExtRef"] == "P1"
     assert "SurveysScheduled" in report["bookkeepingFailures"][0]["error"]
 
 

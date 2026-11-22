@@ -1,5 +1,6 @@
 import * as api from "@qualsched/api";
 import { isUsableAccount } from "./account";
+import { readHidePhi, writeHidePhi } from "./phi";
 import type { Account, AppConfig, Project } from "./types";
 
 export { isUsableAccount } from "./account";
@@ -22,6 +23,9 @@ class AppStore {
   selectedProjectId = $state<string | null>(null);
   screen = $state<ScreenName>("accounts");
   loaded = $state(false);
+  hidePhi = $state<boolean>(
+    readHidePhi(typeof localStorage !== "undefined" ? localStorage : null),
+  );
 
   get account(): Account | null {
     return this.config.accounts.find((a) => a.id === this.selectedAccountId) ?? null;
@@ -76,6 +80,11 @@ class AppStore {
 
   go(screen: ScreenName) {
     this.screen = screen;
+  }
+
+  setHidePhi(value: boolean) {
+    this.hidePhi = value;
+    writeHidePhi(value, typeof localStorage !== "undefined" ? localStorage : null);
   }
 }
 

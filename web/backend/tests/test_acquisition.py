@@ -713,6 +713,7 @@ def test_http_report_strips_answers_and_keeps_ratio(ctx, monkeypatch):
     assert PHONE not in text
     assert "203.0.113.9" not in text
     assert body["rows"][0]["displayName"] == "Ada Lovelace"
+    assert body["rows"][0]["extRef"] == "P1"
     assert body["rows"][0]["monitor"] == "active"
     day = next(item for item in body["rows"][0]["days"] if item["date"] == "2026-07-14")
     assert day["completed"] == 1

@@ -4,6 +4,8 @@ All notable changes to QualSched Web are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-11-22
+
 ### Fixed
 - Acquisition export follows the datacenter host Qualtrics names with error code GRP_1, or in a proxy notice, and retries that host once. The sentence itself is not shown or logged.
 - Acquisition export no longer fails before it reaches Qualtrics. A per-call deadline was passed into the HTTP client's send method, which rejected it, so the request became an internal error and the page only showed its own 50 second timeout. The page now shows the stage and the error type.
@@ -18,6 +20,7 @@ All notable changes to QualSched Web are documented in this file.
   an unfiltered JSON export that is reduced to completion fields in memory.
 
 ### Added
+- **Hide PHI** checkbox in the top bar across Contacts, Contact editor, Schedule, Distributions, and Acquisition: replaces participant names with `extRef` (falling back to Qualtrics contact ID), masks phone numbers, email addresses, and destinations, and locks/masks identity fields while editing. Defaults off and persists in `localStorage`.
 - **Acquisition** screen, shared with desktop: completed surveys versus invitations
   still listed. The browser receives aggregate counts only. Response exports stay
   on the server and are not stored.

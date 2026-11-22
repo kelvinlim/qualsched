@@ -13,6 +13,7 @@
     windowSummary,
   } from "../lib/acquisition-view";
   import { app } from "../lib/state.svelte";
+  import { participantLabel } from "../lib/phi";
   import BusyMark from "../components/BusyMark.svelte";
   import { acquisitionStatus } from "../lib/acquisition-poll";
   import {
@@ -266,7 +267,9 @@
           {@const window = windowSummary(days)}
           <tr>
             <td>
-              <div>{row.displayName}</div>
+              <div class:mono={app.hidePhi}>
+                {participantLabel(app.hidePhi, row.displayName, row.extRef, row.contactId)}
+              </div>
               <div class="meta">{zoneNote(row)}</div>
             </td>
             <td>

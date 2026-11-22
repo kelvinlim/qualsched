@@ -74,6 +74,7 @@ def _to_plan_item(item) -> PlanItem:
     return PlanItem(
         contactId=item.contact_id,
         contactName=item.contact_name,
+        contactExtRef=item.contact_ext_ref,
         destination=item.destination,
         method=item.method,
         dayIndex=item.day_index,
@@ -107,11 +108,17 @@ def preview(
     for contact in raw:
         name = contacts_svc.display_name(contact)
         contact_id = contacts_svc.contact_id_of(contact) or ""
+        ext_ref = contacts_svc.str_field(contact, "extRef")
         embedded = contacts_svc.embedded_of(contact)
         result = contact_eligibility(embedded, defaults)
         if isinstance(result, str):
             skipped_contacts.append(
-                Skipped(contactId=contact_id, contactName=name, reason=result)
+                Skipped(
+                    contactId=contact_id,
+                    contactName=name,
+                    contactExtRef=ext_ref,
+                    reason=result,
+                )
             )
             continue
 
@@ -126,6 +133,7 @@ def preview(
                 Skipped(
                     contactId=contact_id,
                     contactName=name,
+                    contactExtRef=ext_ref,
                     reason=f"no {kind} on record",
                 )
             )
@@ -135,6 +143,7 @@ def preview(
             PlanInputs(
                 contact_id=contact_id,
                 contact_name=name,
+                contact_ext_ref=ext_ref,
                 destination=destination,
                 method=result.method,
                 slots=result.slots,
@@ -153,13 +162,19 @@ def preview(
                 Skipped(
                     contactId=contact_id,
                     contactName=name,
+                    contactExtRef=ext_ref,
                     reason=f"all {len(dropped)} slots dropped ({dropped[0].reason})",
                 )
             )
             continue
         items.extend(_to_plan_item(item) for item in built)
         skipped_slots.extend(
-            Skipped(contactId=s.contact_id, contactName=s.contact_name, reason=s.reason)
+            Skipped(
+                contactId=s.contact_id,
+                contactName=s.contact_name,
+                contactExtRef=s.contact_ext_ref,
+                reason=s.reason,
+            )
             for s in dropped
         )
 
@@ -296,7 +311,9 @@ def execute(
     def fail(item: PlanItem, error: str, retryable: bool) -> None:
         failed.append(
             ItemFailure(
+                contactId=item.contactId,
                 contactName=item.contactName,
+                contactExtRef=item.contactExtRef,
                 destination=item.destination,
                 sendLocal=item.sendLocal,
                 error=error,
@@ -422,7 +439,9 @@ def execute(
             message, _retryable = _exc_message(exc)
             bookkeeping_failures.append(
                 ItemFailure(
+                    contactId=contact_id,
                     contactName=contacts_svc.display_name(contact),
+                    contactExtRef=contacts_svc.str_field(contact, "extRef"),
                     destination="",
                     sendLocal="",
                     error=(

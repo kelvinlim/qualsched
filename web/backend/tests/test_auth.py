@@ -6,7 +6,7 @@ def test_health(anon):
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["status"] == "ok"
-    assert body["version"] == "0.2.3"
+    assert body["version"] == "0.2.4"
     assert body["devLogin"] is True
     assert body["google"] is False
 

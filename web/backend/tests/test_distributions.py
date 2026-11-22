@@ -134,8 +134,10 @@ def test_list_maps_rows_and_filters_method(ctx, monkeypatch):
     rows = r.json()
     assert [row["id"] for row in rows] == ["EMD_sms_past", "EMD_sms_future", "EMD_orphan"]
     ada = rows[1]
+    assert ada["contactId"] == "CID_ada"
     assert ada["contactLookupId"] == "CGC_secret"
     assert ada["contactName"] == "Ada Lovelace"
+    assert ada["contactExtRef"] == "P1"
     assert ada["contactPhone"] == "16125551234"
     assert ada["contactEmail"] == "ada@example.com"
     assert ada["sendDate"] == FUTURE

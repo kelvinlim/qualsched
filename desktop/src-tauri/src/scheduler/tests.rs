@@ -33,6 +33,7 @@ fn plan_inputs<'a>(slots: &'a [Slot], start: &'a str, num_days: i64) -> PlanInpu
     PlanInputs {
         contact_id: "CID_1",
         contact_name: "Test Participant",
+        contact_ext_ref: "P1",
         destination: "+15555550100",
         method: Method::Sms,
         slots,

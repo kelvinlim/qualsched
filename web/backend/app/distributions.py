@@ -187,7 +187,9 @@ def list_raw_rows(
 
 @dataclass
 class Recipient:
+    contact_id: str
     name: str
+    ext_ref: str
     zone: str
     phone: str
     email: str
@@ -210,7 +212,9 @@ def _recipients(
         embedded = contacts_svc.embedded_of(contact)
         zone = (embedded.get("TimeZone") or "").strip() or default_zone
         found[lookup] = Recipient(
+            contact_id=contacts_svc.contact_id_of(contact) or "",
             name=contacts_svc.display_name(contact),
+            ext_ref=contacts_svc.str_field(contact, "extRef"),
             zone=zone,
             phone=contacts_svc.str_field(contact, "phone"),
             email=contacts_svc.str_field(contact, "email"),
@@ -238,7 +242,9 @@ def list_views(
         resolved.append(
             row.model_copy(
                 update={
+                    "contactId": recipient.contact_id,
                     "contactName": recipient.name,
+                    "contactExtRef": recipient.ext_ref,
                     "contactPhone": recipient.phone,
                     "contactEmail": recipient.email,
                     "sendLocal": local_send_time(row.sendDate, recipient.zone),

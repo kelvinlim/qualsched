@@ -99,8 +99,10 @@ pub enum Method {
 #[serde(rename_all = "camelCase")]
 pub struct DistributionRow {
     pub id: String,
+    pub contact_id: String,
     pub contact_lookup_id: String,
     pub contact_name: String,
+    pub contact_ext_ref: String,
     /// The recipient's phone and email, carried so the table can be searched by them.
     /// Empty when the recipient could not be resolved; filled in by the command layer.
     pub contact_phone: String,

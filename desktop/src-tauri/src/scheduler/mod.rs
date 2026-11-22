@@ -287,6 +287,8 @@ pub struct SurveyRef {
 pub struct PlanItem {
     pub contact_id: String,
     pub contact_name: String,
+    #[serde(default)]
+    pub contact_ext_ref: String,
     /// Phone number or email address the invitation goes to.
     pub destination: String,
     pub method: Method,
@@ -308,12 +310,15 @@ pub struct PlanItem {
 pub struct Skipped {
     pub contact_id: String,
     pub contact_name: String,
+    #[serde(default)]
+    pub contact_ext_ref: String,
     pub reason: String,
 }
 
 pub struct PlanInputs<'a> {
     pub contact_id: &'a str,
     pub contact_name: &'a str,
+    pub contact_ext_ref: &'a str,
     pub destination: &'a str,
     pub method: Method,
     pub slots: &'a [Slot],
@@ -345,6 +350,7 @@ pub fn build_contact_plan<R: Rng + ?Sized>(
     let skip = |reason: String| Skipped {
         contact_id: input.contact_id.to_string(),
         contact_name: input.contact_name.to_string(),
+        contact_ext_ref: input.contact_ext_ref.to_string(),
         reason,
     };
 
@@ -414,6 +420,7 @@ pub fn build_contact_plan<R: Rng + ?Sized>(
             items.push(PlanItem {
                 contact_id: input.contact_id.to_string(),
                 contact_name: input.contact_name.to_string(),
+                contact_ext_ref: input.contact_ext_ref.to_string(),
                 destination: input.destination.to_string(),
                 method: input.method,
                 day_index: day,

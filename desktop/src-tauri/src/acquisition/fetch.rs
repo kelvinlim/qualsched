@@ -306,6 +306,7 @@ pub async fn load_report(
             contact_id: contact_id.to_string(),
             lookup_id: lookup,
             display_name: display_name(raw),
+            ext_ref: raw.str_field("extRef").unwrap_or_default(),
             timezone_name: embedded.get("TimeZone").cloned().unwrap_or_default(),
             start_date: embedded.get("StartDate").cloned().unwrap_or_default(),
             num_days: int_field(&embedded, "NumDays"),

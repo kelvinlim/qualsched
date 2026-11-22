@@ -3,6 +3,7 @@
 
   import * as api from "@qualsched/api";
   import { matchesQuery } from "../lib/filter";
+  import { maskPhiCell, participantLabel } from "../lib/phi";
   import { app } from "../lib/state.svelte";
   import { errorMessage, type ContactView } from "../lib/types";
   import BusyMark from "../components/BusyMark.svelte";
@@ -30,11 +31,15 @@
    * Qualtrics field names, so they match what the editor and Qualtrics itself show.
    */
   const COLUMNS: Column[] = [
-    { key: "name", label: "Name", value: (c) => sortableName(c) },
+    {
+      key: "name",
+      label: "Name",
+      value: (c) => participantLabel(app.hidePhi, sortableName(c), c.extRef, c.contactId),
+    },
     // Phone and email are shown side by side rather than picking one by ContactMethod:
     // participants can be on either channel, and a blank cell is itself worth seeing.
-    { key: "phone", label: "Phone", mono: true, value: (c) => asText(c.phone) },
-    { key: "email", label: "Email", mono: true, value: (c) => asText(c.email) },
+    { key: "phone", label: "Phone", mono: true, value: (c) => maskPhiCell(app.hidePhi, c.phone) },
+    { key: "email", label: "Email", mono: true, value: (c) => maskPhiCell(app.hidePhi, c.email) },
     { key: "StartDate", label: "StartDate", mono: true, value: (c) => asText(c.embedded.StartDate) },
     { key: "NumDays", label: "NumDays", mono: true, value: (c) => asNumber(c.embedded.NumDays) },
     { key: "TimeSlots", label: "TimeSlots", mono: true, value: (c) => asText(c.embedded.TimeSlots) },
@@ -80,6 +85,14 @@
   $effect(() => {
     void app.selectedProjectId;
     query = "";
+  });
+
+  // Turning Hide PHI on clears any search text or transient notice that could carry a name.
+  $effect(() => {
+    if (app.hidePhi) {
+      query = "";
+      notice = "";
+    }
   });
 
   async function load() {
@@ -131,7 +144,7 @@
         contacts = [...contacts, created];
         // Otherwise the notice announces a row the search is hiding.
         query = "";
-        notice = `Added ${displayName(created)} to the mailing list.`;
+        notice = `Added ${visibleName(created)} to the mailing list.`;
       } else {
         const updated = await api.updateContact(
           app.account.id,
@@ -143,7 +156,7 @@
         contacts = contacts.map((c) =>
           c.contactId === updated.contactId ? updated : c,
         );
-        notice = `Updated ${displayName(updated)}.`;
+        notice = `Updated ${visibleName(updated)}.`;
       }
       editor = null;
     } catch (e) {
@@ -193,10 +206,16 @@
       next.delete(target.contactId);
       selected = next;
       if (editor !== "new" && editor?.contactId === target.contactId) editor = null;
+      const removedLabel = participantLabel(
+        app.hidePhi,
+        result.contactName || displayName(target),
+        target.extRef,
+        target.contactId,
+      );
       notice =
         result.cancelled > 0
-          ? `Removed ${result.contactName} and cancelled ${result.cancelled} pending invitation(s).`
-          : `Removed ${result.contactName} from the mailing list.`;
+          ? `Removed ${removedLabel} and cancelled ${result.cancelled} pending invitation(s).`
+          : `Removed ${removedLabel} from the mailing list.`;
     } catch (e) {
       error = errorMessage(e);
     } finally {
@@ -237,6 +256,10 @@
     return name || c.email || c.phone || c.contactId;
   }
 
+  function visibleName(c: ContactView): string {
+    return participantLabel(app.hidePhi, displayName(c), c.extRef, c.contactId);
+  }
+
   /** "Lim, Kelvin" — scannable down a column, and sorts by family name. */
   function sortableName(c: ContactView): string {
     const last = c.lastName.trim();
@@ -251,8 +274,10 @@
 
   let matching = $derived(
     contacts.filter((c) =>
-      // sortableName so a name copied out of the table ("Lim, Kelvin") still matches.
-      matchesQuery(query, [c.firstName, c.lastName, sortableName(c), c.phone, c.email]),
+      app.hidePhi
+        ? matchesQuery(query, [c.extRef, c.contactId])
+        : // sortableName so a name copied out of the table ("Lim, Kelvin") still matches.
+          matchesQuery(query, [c.firstName, c.lastName, sortableName(c), c.phone, c.email, c.extRef]),
     ),
   );
 
@@ -299,7 +324,7 @@
     class="search"
     type="search"
     bind:value={query}
-    placeholder="Search name, phone or email"
+    placeholder={app.hidePhi ? "Search external reference or ID" : "Search name, phone or email"}
     aria-label="Search participants"
   />
   {#if query.trim()}
@@ -320,6 +345,7 @@
     <ContactEditor
       contact={editor === "new" ? null : editor}
       {busy}
+      hidePhi={app.hidePhi}
       onsave={save}
       oncancel={() => (editor = null)}
     />
@@ -379,7 +405,7 @@
                 type="checkbox"
                 checked={selected.has(contact.contactId)}
                 onchange={() => toggle(contact.contactId)}
-                aria-label={`Select ${displayName(contact)}`}
+                aria-label={`Select ${visibleName(contact)}`}
               />
             </td>
             {#each COLUMNS as column (column.key)}
@@ -393,7 +419,9 @@
                   {/if}
                 </td>
               {:else}
-                <td class:mono={column.mono}>{column.value(contact) ?? "—"}</td>
+                <td class:mono={column.mono || (app.hidePhi && column.key === "name")}>
+                  {column.value(contact) ?? "—"}
+                </td>
               {/if}
             {/each}
             <td>
@@ -418,7 +446,7 @@
   bind:open={confirmRemove}
   title="Remove this participant?"
   body={pendingRemoval
-    ? `${displayName(pendingRemoval)} will be taken out of this study's mailing list, and any invitations already booked for them but not yet sent will be cancelled first. They stay in your Qualtrics directory, and survey responses they have already submitted are not affected.`
+    ? `${visibleName(pendingRemoval)} will be taken out of this study's mailing list, and any invitations already booked for them but not yet sent will be cancelled first. They stay in your Qualtrics directory, and survey responses they have already submitted are not affected.`
     : ""}
   confirmLabel="Remove"
   danger

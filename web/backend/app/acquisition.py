@@ -138,6 +138,7 @@ class AcquisitionRow(BaseModel):
 
     contactId: str
     displayName: str
+    extRef: str = ""
     monitor: Literal["active", "inactive"]
     timezone: str = ""
     timezoneSource: Literal["contact", "profile", "invalid", "missing"]
@@ -186,6 +187,7 @@ class Participant:
     num_days: int
     monitor: str
     surveys_scheduled: int
+    ext_ref: str = ""
 
 
 @dataclass
@@ -828,6 +830,7 @@ def aggregate(
             AcquisitionRow(
                 contactId=person.contact_id,
                 displayName=person.display_name,
+                extRef=person.ext_ref,
                 monitor=monitor,  # type: ignore[arg-type]
                 timezone="" if zone is None else str(zone),
                 timezoneSource=source,  # type: ignore[arg-type]
@@ -1469,6 +1472,7 @@ def _new_job(
                 contact_id=contact_id,
                 lookup_id=lookup,
                 display_name=name,
+                ext_ref=str_field(raw, "extRef"),
                 timezone_name=embedded.get("TimeZone", ""),
                 start_date=embedded.get("StartDate", ""),
                 num_days=_int_field(embedded, "NumDays"),

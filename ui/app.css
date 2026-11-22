@@ -164,8 +164,15 @@ main {
   padding: 1.5rem 2rem 3rem;
 }
 
-/* Which account and profile every screen is acting on. Replaced the sidebar's context
-   block, which sat below the nav where nobody was looking. */
+/* Which account and profile every screen is acting on, paired with the global Hide PHI toggle. */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
+}
 .breadcrumb {
   display: flex;
   align-items: center;
@@ -173,7 +180,27 @@ main {
   gap: 0.35rem;
   font-size: 0.82rem;
   color: var(--muted);
-  margin-bottom: 0.75rem;
+}
+.phi-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.phi-toggle input {
+  width: auto;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.phi-toggle.active {
+  color: var(--text);
+  font-weight: 600;
 }
 /* button.link underlines permanently, which is too heavy for chrome that is on screen
    all the time, and its padding knocks the crumbs out of line with the separator. */

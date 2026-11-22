@@ -1,6 +1,7 @@
 <script lang="ts">
   import * as api from "@qualsched/api";
   import ChangelogPanel from "@qualsched/ui/components/ChangelogPanel.svelte";
+  import TopBar from "@qualsched/ui/components/TopBar.svelte";
   import { NAV_ITEMS, navItemDisabled, navItemTitle } from "@qualsched/ui/lib/nav";
   import { app } from "@qualsched/ui/lib/state.svelte";
   import { errorMessage, type UpdateInfo } from "@qualsched/ui/lib/types";
@@ -18,7 +19,7 @@
   import LegalPage from "./components/LegalPage.svelte";
   import LoginScreen from "./components/LoginScreen.svelte";
 
-  const VERSION = "0.2.3";
+  const VERSION = "0.2.4";
   const legalKind = api.legalKindFromPath();
 
   let loadError = $state("");
@@ -126,24 +127,7 @@
 
     <main>
       {#if app.loaded}
-        <nav class="breadcrumb" aria-label="Breadcrumb">
-          {#if app.account}
-            <button class="link" onclick={() => app.go("accounts")}>
-              {app.account.name || "(unnamed account)"}
-            </button>
-            {#if app.account.dataCenter}
-              <span class="badge muted">{app.account.dataCenter}</span>
-            {/if}
-            <span class="sep" aria-hidden="true">/</span>
-            <button class="link" onclick={() => app.go("project")}>
-              {app.project
-                ? app.project.name || "(unnamed profile)"
-                : "Choose a survey profile"}
-            </button>
-          {:else}
-            <button class="link" onclick={() => app.go("accounts")}>Choose an account</button>
-          {/if}
-        </nav>
+        <TopBar />
       {/if}
 
       {#if loadError}
