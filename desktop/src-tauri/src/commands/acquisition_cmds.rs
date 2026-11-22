@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use chrono::Utc;
 use serde::Serialize;
 use serde_json::json;
-use tauri::State;
+use tauri::{Emitter, State, Window};
 use uuid::Uuid;
 
 use crate::acquisition::{self, load_report, AcquisitionReport};
@@ -23,6 +23,7 @@ pub struct MonitorUpdate {
 /// counts plus the display name already shown on Contacts. It is not stored.
 #[tauri::command]
 pub async fn get_acquisition(
+    window: Window,
     state: State<'_, AppState>,
     account_id: Uuid,
     project_id: Uuid,
@@ -41,7 +42,10 @@ pub async fn get_acquisition(
         return Err(AppError::Invalid("this project has no survey selected".into()));
     }
     let client = state.client(account_id).await?;
-    load_report(&client, &account, &project, Utc::now()).await
+    let on_status = |status: &str| {
+        let _ = window.emit("acquisition://status", json!({ "status": status }));
+    };
+    load_report(&client, &account, &project, Utc::now(), &on_status).await
 }
 
 /// Manual active/inactive flag. Does not cancel invitations, delete responses,

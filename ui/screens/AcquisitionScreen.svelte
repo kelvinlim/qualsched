@@ -14,6 +14,7 @@
   } from "../lib/acquisition-view";
   import { app } from "../lib/state.svelte";
   import BusyMark from "../components/BusyMark.svelte";
+  import { acquisitionStatus } from "../lib/acquisition-poll";
   import {
     errorMessage,
     type AcquisitionReport,
@@ -22,6 +23,7 @@
 
   let report = $state<AcquisitionReport | null>(null);
   let error = $state("");
+  let stageLine = $state("");
   let loading = $state(false);
   let loadOp = $state(0);
   let loadController: AbortController | null = null;
@@ -47,6 +49,7 @@
     untrack(() => {
       report = null;
       error = "";
+      stageLine = "";
       marking = "";
       markTickets.clear();
       contextGeneration += 1;
@@ -66,8 +69,24 @@
     loadOp += 1;
     loading = true;
     error = "";
+    stageLine = "";
     try {
-      const next = await api.getAcquisition(accountId, projectId, controller.signal);
+      const next = await api.getAcquisition(
+        accountId,
+        projectId,
+        controller.signal,
+        (status) => {
+          if (controller.signal.aborted) return;
+          const safe = acquisitionStatus(status);
+          if (
+            safe &&
+            app.selectedAccountId === accountId &&
+            app.selectedProjectId === projectId
+          ) {
+            stageLine = safe;
+          }
+        },
+      );
       if (controller.signal.aborted) return;
       if (app.selectedAccountId === accountId && app.selectedProjectId === projectId) {
         report = next;
@@ -192,7 +211,11 @@
       Entire study
     </button>
   </div>
-</div>
+  </div>
+
+{#if loading && stageLine}
+  <p class="meta" aria-live="polite">{stageLine}</p>
+{/if}
 
 {#if error}
   <div class="banner error">{error}</div>

@@ -70,8 +70,26 @@ class QualtricsClient:
     def __exit__(self, *exc: object) -> None:
         self.close()
 
-    def _send(self, req: httpx.Request, timeout: float | None = None) -> dict[str, Any]:
-        resp = self._client.send(req, timeout=timeout) if timeout is not None else self._client.send(req)
+    def _request(
+        self,
+        method: str,
+        url: str,
+        *,
+        timeout: float | None = None,
+        json: dict[str, Any] | None = None,
+    ) -> httpx.Request:
+        # httpx.Client.send() does not accept timeout. The per-call deadline has
+        # to be stored on the request, or send() raises TypeError before the
+        # bytes leave the process.
+        kwargs: dict[str, Any] = {}
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+        if json is not None:
+            kwargs["json"] = json
+        return self._client.build_request(method, url, **kwargs)
+
+    def _send(self, req: httpx.Request) -> dict[str, Any]:
+        resp = self._client.send(req)
         status = resp.status_code
         text = resp.text
         if status in (401, 403):
@@ -105,7 +123,7 @@ class QualtricsClient:
         raise QualtricsError(status if status >= 400 else 502, "Api", message, code=code)
 
     def get(self, path: str, timeout: float | None = None) -> dict[str, Any]:
-        return self._send(self._client.build_request("GET", self.url(path)), timeout)
+        return self._send(self._request("GET", self.url(path), timeout=timeout))
 
     def get_bytes(self, path: str) -> bytearray:
         """Download a binary body into memory.
@@ -116,7 +134,7 @@ class QualtricsClient:
         overwrite it after parsing. This does not cover copies the HTTP stack
         already made, or memory the OS has paged out.
         """
-        resp = self._client.send(self._client.build_request("GET", self.url(path)))
+        resp = self._client.send(self._request("GET", self.url(path)))
         status = resp.status_code
         if status in (401, 403):
             raise QualtricsError(401, "Unauthorized", "Qualtrics rejected the API token.")
@@ -171,21 +189,21 @@ class QualtricsClient:
                 504, "Api", "Qualtrics response export failed at download (timeout)."
             ) from exc
 
-    def get_absolute(self, url: str) -> dict[str, Any]:
-        return self._send(self._client.build_request("GET", url))
+    def get_absolute(self, url: str, timeout: float | None = None) -> dict[str, Any]:
+        return self._send(self._request("GET", url, timeout=timeout))
 
     def post(self, path: str, body: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
-        return self._send(self._client.build_request("POST", self.url(path), json=body), timeout)
+        return self._send(self._request("POST", self.url(path), timeout=timeout, json=body))
 
     def put(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
-        return self._send(self._client.build_request("PUT", self.url(path), json=body))
+        return self._send(self._request("PUT", self.url(path), json=body))
 
     def delete(self, path: str) -> dict[str, Any]:
-        return self._send(self._client.build_request("DELETE", self.url(path)))
+        return self._send(self._request("DELETE", self.url(path)))
 
-    def get_elements(self, path: str) -> list[dict[str, Any]]:
+    def get_elements(self, path: str, timeout: float | None = None) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
-        body = self.get(path)
+        body = self.get(path) if timeout is None else self.get(path, timeout=timeout)
         while True:
             result = body.get("result") if isinstance(body, dict) else None
             elements = result.get("elements") if isinstance(result, dict) else None
@@ -193,7 +211,11 @@ class QualtricsClient:
                 out.extend(e for e in elements if isinstance(e, dict))
             next_url = result.get("nextPage") if isinstance(result, dict) else None
             if isinstance(next_url, str) and next_url:
-                body = self.get_absolute(next_url)
+                body = (
+                    self.get_absolute(next_url)
+                    if timeout is None
+                    else self.get_absolute(next_url, timeout=timeout)
+                )
             else:
                 break
         return out

@@ -74,6 +74,43 @@ fn from_reject(stage: &str, reject: RemoteReject) -> AppError {
     export_failure(stage, Some(reject.status), reject.code.as_deref(), None)
 }
 
+fn publish_status(on_status: &impl Fn(&str), text: &str) {
+    if acceptable_status(text) {
+        on_status(text);
+    }
+}
+
+fn acceptable_status(text: &str) -> bool {
+    matches!(
+        text,
+        "Connecting to Qualtrics"
+            | "Loading contacts"
+            | "Contacts loaded"
+            | "Loading invitations"
+            | "Invitations loaded"
+            | "Counting completions"
+    ) || progress_status(text, "Exporting survey ")
+        || progress_status(text, "Waiting for export ")
+        || progress_status(text, "Downloading export ")
+}
+
+fn progress_status(text: &str, prefix: &str) -> bool {
+    let Some(rest) = text.strip_prefix(prefix) else {
+        return false;
+    };
+    let Some((left, right)) = rest.split_once(" of ") else {
+        return false;
+    };
+    count_token(left) && count_token(right)
+}
+
+fn count_token(token: &str) -> bool {
+    let Ok(value) = token.parse::<u32>() else {
+        return false;
+    };
+    (1..=999).contains(&value) && !token.starts_with('0')
+}
+
 /// One progress body. `percentComplete` is not enough: the file id is usable
 /// only when Qualtrics reports `status: complete`.
 pub fn progress_view(body: &Value) -> AppResult<Option<String>> {
@@ -135,8 +172,19 @@ async fn download_one(
     client: &QualtricsClient,
     survey_id: &str,
     polls_total: &mut u32,
+    index: u32,
+    total: u32,
+    on_status: &impl Fn(&str),
 ) -> AppResult<(Vec<ParsedResponse>, ExportMode)> {
+    publish_status(
+        on_status,
+        &format!("Exporting survey {index} of {total}"),
+    );
     let (progress_id, mode) = start_export(client, survey_id).await?;
+    publish_status(
+        on_status,
+        &format!("Waiting for export {index} of {total}"),
+    );
     let mut polls_survey = 0u32;
     let file_id = loop {
         let body = client
@@ -157,6 +205,10 @@ async fn download_one(
         }
         tokio::time::sleep(Duration::from_secs(2)).await;
     };
+    publish_status(
+        on_status,
+        &format!("Downloading export {index} of {total}"),
+    );
     let mut bytes = client
         .get_bytes(&format!(
             "surveys/{survey_id}/export-responses/{file_id}/file"
@@ -222,7 +274,10 @@ pub async fn load_report(
     account: &Account,
     project: &Project,
     now: DateTime<Utc>,
+    on_status: &impl Fn(&str),
 ) -> AppResult<AcquisitionReport> {
+    publish_status(on_status, "Connecting to Qualtrics");
+    publish_status(on_status, "Loading contacts");
     let raw_contacts = contacts::list_contacts(
         client,
         &account.default_directory,
@@ -261,6 +316,8 @@ pub async fn load_report(
             surveys_scheduled: int_field(&embedded, "SurveysScheduled"),
         });
     }
+    publish_status(on_status, "Contacts loaded");
+    publish_status(on_status, "Loading invitations");
 
     let mut invitations = Vec::new();
     let mut sms_missing = false;
@@ -276,13 +333,25 @@ pub async fn load_report(
         )
         .await?;
     }
+    publish_status(on_status, "Invitations loaded");
 
     let mut responses = Vec::new();
     let mut mode = ExportMode::Columns;
     let mut copy_export_failed = false;
     let mut polls_total = 0u32;
-    for survey in project.survey_rotation() {
-        match download_one(client, &survey.id, &mut polls_total).await {
+    let surveys = project.survey_rotation();
+    let total = surveys.len() as u32;
+    for (offset, survey) in surveys.iter().enumerate() {
+        match download_one(
+            client,
+            &survey.id,
+            &mut polls_total,
+            offset as u32 + 1,
+            total,
+            on_status,
+        )
+        .await
+        {
             Ok((found, used)) => {
                 responses.extend(found);
                 mode = wider(mode, used);
@@ -299,6 +368,7 @@ pub async fn load_report(
             Err(err) => return Err(err),
         }
     }
+    publish_status(on_status, "Counting completions");
     let mut report = aggregate(
         &participants,
         &invitations,
@@ -408,6 +478,17 @@ mod tests {
         assert!(text.contains("at poll (export status failed) [QE_9]."));
         assert!(!text.contains("ada@example.com"));
         assert!(!text.contains("RecipientID"));
+    }
+
+    #[test]
+    fn status_lines_are_fixed_phrases() {
+        assert!(acceptable_status("Loading contacts"));
+        assert!(acceptable_status("Exporting survey 1 of 3"));
+        assert!(acceptable_status("Waiting for export 2 of 2"));
+        assert!(acceptable_status("Downloading export 10 of 12"));
+        assert!(!acceptable_status("Exporting survey SV_1 of 3"));
+        assert!(!acceptable_status("Loading contacts for ada@example.com"));
+        assert!(!acceptable_status("Exporting survey 0 of 1"));
     }
 
     #[test]

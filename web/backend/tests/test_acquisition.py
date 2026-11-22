@@ -3,6 +3,8 @@
 import builtins
 import io
 import json
+import threading
+import time
 import zipfile
 from datetime import UTC, datetime
 
@@ -577,7 +579,7 @@ class FakeQualtrics:
     def add(self, raw: dict) -> None:
         self.contacts.append(raw)
 
-    def get_elements(self, path: str):
+    def get_elements(self, path: str, timeout: float | None = None):
         self.calls.append(("get_elements", path))
         if "distributions" in path:
             # Email and SMS are different Qualtrics collections. Returning the same
@@ -653,6 +655,13 @@ def _contact() -> dict:
 def _install(monkeypatch, fake: FakeQualtrics):
     monkeypatch.setattr("app.routers.acquisition.qualtrics_for", lambda _account: fake)
     monkeypatch.setattr("app.acquisition.time.sleep", lambda _seconds: None)
+
+    def inline(target, args):
+        target(*args)
+
+    # Existing cases want the finished body. The background-thread test below
+    # leaves the real starter in place.
+    monkeypatch.setattr("app.routers.acquisition._start_worker", inline)
 
 
 def _follow(http, headers: dict | None = None):
@@ -1070,7 +1079,8 @@ def test_start_failure_keeps_stage_status_and_code_only():
         raise AssertionError("create failure should be raised")
 
 
-def test_in_progress_export_continues_on_the_same_attempt(ctx, monkeypatch):
+def test_in_progress_export_is_not_a_finished_file(ctx, monkeypatch):
+    """An in-progress progress body is polled again. It is not downloaded."""
     http, _, _ = ctx
     _ready_account(http)
     fake = FakeQualtrics(
@@ -1106,23 +1116,12 @@ def test_in_progress_export_continues_on_the_same_attempt(ctx, monkeypatch):
 
     fake.get = get
     _install(monkeypatch, fake)
-    headers = {"X-Qualsched-Attempt": "attempt-one"}
-    first = http.get(BASE, headers=headers)
-    assert first.status_code == 202, first.text
-    assert first.json() == {"pending": True, "stage": "poll"}
-    assert EMAIL not in first.text
-    assert "FILE1" not in first.text
-    second = http.get(BASE, headers=headers)
-    assert second.status_code == 202, second.text
-    assert second.json()["stage"] == "download"
-    assert not any(call[0] == "get_bytes" for call in fake.calls)
-    third = http.get(BASE, headers=headers)
-    assert third.status_code == 200, third.text
-    assert third.json()["rows"][0]["displayName"] == "Ada Lovelace"
-    assert EMAIL not in third.text
-    assert any(call[0] == "get_bytes" for call in fake.calls)
-    restarted = http.get(BASE, headers={"X-Qualsched-Attempt": "attempt-two"})
-    assert restarted.status_code in (200, 202)
+    response = _follow(http)
+    assert response.status_code == 200, response.text
+    assert response.json()["rows"][0]["displayName"] == "Ada Lovelace"
+    assert polls["n"] >= 2
+    assert EMAIL not in response.text
+    assert "FILE1" not in response.text
 
 
 def test_poll_budget_reports_timeout_without_the_progress_body():
@@ -1401,3 +1400,115 @@ def test_deadline_keeps_primary_counts_when_a_copy_is_still_running():
     assert report.rows[0].displayName == "Ada Lovelace"
     assert any("leftover survey copy" in item for item in report.limitations)
     assert EMAIL not in report.model_dump_json()
+
+
+def test_status_text_is_a_fixed_phrase():
+    from app.acquisition import status_text
+
+    assert status_text("Loading contacts") == "Loading contacts"
+    assert status_text("Exporting survey 2 of 3") == "Exporting survey 2 of 3"
+    assert status_text("Waiting for export 1 of 1") == "Waiting for export 1 of 1"
+    assert status_text("Downloading export 1 of 12") == "Downloading export 1 of 12"
+    assert status_text("Counting completions") == "Counting completions"
+    assert status_text("Exporting survey SV_1 of 3") is None
+    assert status_text("Loading contacts for ada@example.com") is None
+    assert status_text("Exporting survey 0 of 1") is None
+    assert status_text("http://example.com") is None
+
+
+def test_error_type_message_has_no_exception_text():
+    exc = export_failure("start", error_type="TypeError")
+    assert exc.status == 500
+    assert exc.message == "Qualtrics response export failed at start (TypeError)."
+    noisy = export_failure(
+        "poll",
+        error_type="Client.send() got an unexpected keyword argument 'timeout'",
+    )
+    assert "keyword" not in noisy.message
+    assert noisy.message == "Qualtrics response export failed at poll."
+
+
+def test_unexpected_export_error_is_stage_and_type(ctx, monkeypatch):
+    http, _, _ = ctx
+    _ready_account(http)
+    fake = FakeQualtrics(_zip([]))
+    fake.add(_contact())
+
+    def post(path: str, body: dict, timeout: float | None = None):
+        raise TypeError("Client.send() got an unexpected keyword argument 'timeout'")
+
+    fake.post = post
+    _install(monkeypatch, fake)
+    response = _follow(http)
+    assert response.status_code == 500, response.text
+    message = response.json()["detail"]["message"]
+    assert message == "Qualtrics response export failed at start (TypeError)."
+    assert "Client.send" not in response.text
+    assert "keyword" not in response.text
+    assert EMAIL not in response.text
+    assert "SV_" not in response.text
+
+
+def test_acquisition_get_returns_before_qualtrics_answers(ctx, monkeypatch):
+    http, _, _ = ctx
+    _ready_account(http)
+    fake = FakeQualtrics(
+        _zip(
+            [
+                _response(
+                    "R1",
+                    finished=1,
+                    status=0,
+                    RecipientID="CID_ada",
+                    endDate="2026-07-14T13:30:00Z",
+                )
+            ]
+        )
+    )
+    fake.add(_contact())
+    release = threading.Event()
+    entered = threading.Event()
+
+    def get_elements(path: str, timeout: float | None = None):
+        if "contacts" in path:
+            entered.set()
+            assert release.wait(5)
+        return FakeQualtrics.get_elements(fake, path, timeout)
+
+    fake.get_elements = get_elements
+    monkeypatch.setattr("app.routers.acquisition.qualtrics_for", lambda _account: fake)
+    monkeypatch.setattr("app.acquisition.time.sleep", lambda _seconds: None)
+    headers = {"X-Qualsched-Attempt": "attempt-background"}
+    box: dict = {}
+
+    def request():
+        box["response"] = http.get(BASE, headers=headers)
+
+    caller = threading.Thread(target=request)
+    caller.start()
+    try:
+        assert entered.wait(2), "worker did not start listing contacts"
+        caller.join(1)
+        assert not caller.is_alive(), "acquisition GET blocked on the contact list"
+        first = box["response"]
+        assert first.status_code == 202, first.text
+        body = first.json()
+        assert body["pending"] is True
+        assert body["status"] in {"Connecting to Qualtrics", "Loading contacts"}
+        assert EMAIL not in first.text
+        assert "CID_" not in first.text
+        assert "SV_" not in first.text
+        assert not any(call[0] == "get_bytes" for call in fake.calls)
+    finally:
+        release.set()
+        caller.join(5)
+    done = None
+    for _ in range(50):
+        done = http.get(BASE, headers=headers)
+        if done.status_code != 202:
+            break
+        time.sleep(0.02)
+    assert done is not None
+    assert done.status_code == 200, done.text
+    assert done.json()["rows"][0]["displayName"] == "Ada Lovelace"
+    assert EMAIL not in done.text

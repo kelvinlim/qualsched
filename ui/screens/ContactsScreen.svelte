@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from "svelte";
+  import { tick, untrack } from "svelte";
 
   import * as api from "@qualsched/api";
   import { matchesQuery } from "../lib/filter";
@@ -70,7 +70,10 @@
   let editorPanel = $state<HTMLDivElement | null>(null);
 
   $effect(() => {
-    if (app.hasProject) void load();
+    // load() increments loadOp before its first await. Reading that state from
+    // this effect subscribed the effect to it, so every fetch started another
+    // fetch. Only a project change should reload the mailing list.
+    if (app.hasProject) untrack(() => void load());
   });
 
   // Its own effect rather than a line in load(): Refresh should not wipe what was typed.

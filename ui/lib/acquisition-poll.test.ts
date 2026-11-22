@@ -1,4 +1,4 @@
-import { followAcquisition } from "./acquisition-poll.ts";
+import { acquisitionStatus, followAcquisition } from "./acquisition-poll.ts";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -103,6 +103,59 @@ const token = await followAcquisition({
 }).catch((error: { message?: string }) => error);
 if (token.message !== "Qualtrics rejected the API token.") {
   throw new Error(token.message ?? "missing token message");
+}
+
+const stages: string[] = [];
+let statusSlices = 0;
+await followAcquisition({
+  request: async () => {
+    statusSlices += 1;
+    if (statusSlices === 1) {
+      return jsonResponse(202, {
+        pending: true,
+        stage: "start",
+        status: "Loading contacts",
+      });
+    }
+    if (statusSlices === 2) {
+      return jsonResponse(202, {
+        pending: true,
+        stage: "start",
+        status: "ada@example.com",
+      });
+    }
+    return jsonResponse(200, { rows: [] });
+  },
+  pause: async () => {},
+  onStatus: (status) => stages.push(status),
+});
+if (stages.length !== 1 || stages[0] !== "Loading contacts") {
+  throw new Error(`status line should keep only the fixed phrase, got ${stages.join("|")}`);
+}
+
+const failed = await followAcquisition({
+  request: async () =>
+    jsonResponse(500, {
+      detail: {
+        kind: "Api",
+        message: "Qualtrics response export failed at start (TypeError).",
+        retryable: true,
+      },
+    }),
+  pause: async () => {},
+}).catch((error: { message?: string }) => error);
+if (failed.message !== "Qualtrics response export failed at start (TypeError).") {
+  throw new Error(failed.message ?? "missing stage error");
+}
+if (String(failed.message).includes("50 seconds")) {
+  throw new Error("a returned 500 must not be replaced by the client timeout");
+}
+
+if (acquisitionStatus("Exporting survey 1 of 3") !== "Exporting survey 1 of 3") {
+  throw new Error("survey progress should be shown");
+}
+if (acquisitionStatus("Exporting survey SV_1 of 3") !== null) {
+  throw new Error("a survey id must not be shown");
 }
 
 console.log("acquisition poll tests ok");

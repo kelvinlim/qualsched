@@ -92,11 +92,24 @@ export const getMessageText = (accountId: string, messageId: string) =>
 
 // --- contacts -------------------------------------------------------------
 
-export const getAcquisition = (
+export async function getAcquisition(
   accountId: string,
   projectId: string,
   _signal?: AbortSignal,
-) => invoke<AcquisitionReport>("get_acquisition", { accountId, projectId });
+  onStatus?: (status: string) => void,
+): Promise<AcquisitionReport> {
+  let unlisten: UnlistenFn | undefined;
+  if (onStatus) {
+    unlisten = await listen<{ status?: string }>("acquisition://status", (event) => {
+      if (typeof event.payload?.status === "string") onStatus(event.payload.status);
+    });
+  }
+  try {
+    return await invoke<AcquisitionReport>("get_acquisition", { accountId, projectId });
+  } finally {
+    unlisten?.();
+  }
+}
 
 export const setAcquisitionStatus = (
   accountId: string,

@@ -6,6 +6,25 @@ export const ACQUISITION_PAUSE_MS = 1_500;
 
 const PENDING_STAGES = new Set(["start", "poll", "download", "parse"]);
 
+const STATUS_EXACT = new Set([
+  "Connecting to Qualtrics",
+  "Loading contacts",
+  "Contacts loaded",
+  "Loading invitations",
+  "Invitations loaded",
+  "Counting completions",
+]);
+
+const STATUS_PROGRESS =
+  /^(Exporting survey|Waiting for export|Downloading export) [1-9]\d{0,2} of [1-9]\d{0,2}$/;
+
+/** A status line the server is allowed to show. Anything else is dropped. */
+export function acquisitionStatus(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  if (STATUS_EXACT.has(value) || STATUS_PROGRESS.test(value)) return value;
+  return null;
+}
+
 export interface AcquisitionPollError {
   kind: string;
   message: string;
@@ -43,6 +62,7 @@ export async function followAcquisition(options: {
   sliceMs?: number;
   maxSlices?: number;
   pauseMs?: number;
+  onStatus?: (status: string) => void;
 }): Promise<unknown> {
   const pause = options.pause ?? defaultPause;
   const sliceMs = options.sliceMs ?? ACQUISITION_SLICE_MS;
@@ -82,6 +102,12 @@ export async function followAcquisition(options: {
           ? String((body as { stage?: unknown }).stage)
           : "";
       if (PENDING_STAGES.has(stage)) {
+        const status = acquisitionStatus(
+          body && typeof body === "object" && "status" in body
+            ? (body as { status?: unknown }).status
+            : null,
+        );
+        if (status) options.onStatus?.(status);
         await pause(pauseMs, options.signal);
         continue;
       }

@@ -84,6 +84,7 @@ export const getAcquisition: (
   accountId: string,
   projectId: string,
   _signal?: AbortSignal,
+  _onStatus?: (status: string) => void,
 ) => Promise<AcquisitionReport> = async () => ({
   generatedAt: "",
   definitive: true,

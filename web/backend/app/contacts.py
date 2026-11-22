@@ -143,12 +143,18 @@ def append_log_data(existing: Any, entry: dict[str, Any]) -> str:
 
 
 def list_raw(
-    client: QualtricsClient, directory_id: str, mailing_list_id: str
+    client: QualtricsClient,
+    directory_id: str,
+    mailing_list_id: str,
+    timeout: float | None = None,
 ) -> list[dict[str, Any]]:
-    return client.get_elements(
+    path = (
         f"directories/{directory_id}/mailinglists/{mailing_list_id}/contacts"
         "?includeEmbedded=true"
     )
+    if timeout is None:
+        return client.get_elements(path)
+    return client.get_elements(path, timeout=timeout)
 
 
 def fetch_raw(
@@ -178,6 +184,7 @@ def resolve_contact_lookup_id(
     directory_id: str,
     mailing_list_id: str,
     contact: dict[str, Any],
+    timeout: float | None = None,
 ) -> str:
     """The `CGC_…` id Qualtrics wants as a distribution recipient.
 
@@ -190,7 +197,8 @@ def resolve_contact_lookup_id(
     contact_id = contact_id_of(contact)
     if not contact_id:
         raise app_error(400, "Invalid", "contact has no contactId")
-    body = client.get(f"directories/{directory_id}/contacts/{contact_id}")
+    path = f"directories/{directory_id}/contacts/{contact_id}"
+    body = client.get(path) if timeout is None else client.get(path, timeout=timeout)
     result = body.get("result") if isinstance(body, dict) else None
     membership = result.get("mailingListMembership") if isinstance(result, dict) else None
     entry = membership.get(mailing_list_id) if isinstance(membership, dict) else None
