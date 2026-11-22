@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import ssl
 from typing import Any, Self
@@ -20,6 +21,44 @@ def machine_code(value: Any) -> str | None:
     return None
 
 
+# GRP_1 is the published code for a response export sent to the wrong host.
+# The sentence names the datacenter; only that host token is kept.
+_BELONGS_TO = re.compile(
+    r"datacenter the API user belongs to:\s*([A-Za-z0-9][A-Za-z0-9.-]{0,80})",
+    re.IGNORECASE,
+)
+_USE_HOST = re.compile(
+    r"use this host instead:\s*([A-Za-z0-9][A-Za-z0-9.-]{0,80})",
+    re.IGNORECASE,
+)
+_DC_ID = re.compile(r"[a-z]{1,6}[0-9][a-z0-9]{0,6}")
+_DC_LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,20}[a-z0-9])?")
+
+
+def qualtrics_host(text: Any) -> str | None:
+    """Host from a proxy notice or a GRP_1 sentence. Anything else is dropped."""
+    if not isinstance(text, str) or not text:
+        return None
+    match = _BELONGS_TO.search(text) or _USE_HOST.search(text)
+    if match is None:
+        return None
+    return _host_token(match.group(1))
+
+
+def _host_token(token: str) -> str | None:
+    token = token.strip().strip(".").lower()
+    if not token or "@" in token or "/" in token or ".." in token or "_" in token:
+        return None
+    if token.endswith(".qualtrics.com"):
+        name = token[: -len(".qualtrics.com")]
+        if name and all(_DC_LABEL.fullmatch(label) for label in name.split(".")):
+            return token
+        return None
+    if _DC_ID.fullmatch(token):
+        return f"{token}.qualtrics.com"
+    return None
+
+
 class QualtricsError(Exception):
     def __init__(
         self,
@@ -29,6 +68,7 @@ class QualtricsError(Exception):
         *,
         retryable: bool = False,
         code: str | None = None,
+        datacenter_host: str | None = None,
     ):
         super().__init__(message)
         self.status = status
@@ -36,6 +76,8 @@ class QualtricsError(Exception):
         self.message = message
         self.retryable = retryable
         self.code = machine_code(code)
+        host = datacenter_host if isinstance(datacenter_host, str) else ""
+        self.datacenter_host = host if _host_token(host) == host else None
 
     def as_http(self):
         return app_error(self.status, self.kind, self.message, retryable=self.retryable)
@@ -60,6 +102,16 @@ class QualtricsClient:
 
     def url(self, path: str) -> str:
         return f"https://{self.data_center}.qualtrics.com/API/v3/{path.lstrip('/')}"
+
+    def _retarget(self, host: str | None) -> bool:
+        """Point later calls at the host Qualtrics named. Returns whether it changed."""
+        if not host or not host.endswith(".qualtrics.com"):
+            return False
+        data_center = host[: -len(".qualtrics.com")]
+        if not data_center or data_center == self.data_center:
+            return False
+        self.data_center = data_center
+        return True
 
     def close(self) -> None:
         self._client.close()
@@ -111,19 +163,57 @@ class QualtricsClient:
             err = meta.get("error") if isinstance(meta.get("error"), dict) else {}
             msg = err.get("errorMessage") if isinstance(err, dict) else None
             code = machine_code(err.get("errorCode")) if isinstance(err, dict) else None
+            notice = meta.get("notice")
         else:
             msg = None
+            notice = None
 
         if 200 <= status < 300 and (not http_status or http_status.startswith("200")):
+            self._retarget(qualtrics_host(notice))
             return body
 
-        message = msg or text[:300]
+        host = qualtrics_host(msg) if code == "GRP_1" else None
+        # GRP_1's sentence names a datacenter. Keep the host for one retry, not the sentence.
+        if code == "GRP_1":
+            message = "Qualtrics refused the response export for this data center."
+        else:
+            message = msg or text[:300]
         if status == 404:
             raise QualtricsError(404, "NotFound", message, code=code)
-        raise QualtricsError(status if status >= 400 else 502, "Api", message, code=code)
+        raise QualtricsError(
+            status if status >= 400 else 502,
+            "Api",
+            message,
+            code=code,
+            datacenter_host=host,
+        )
+
+    def _exchange(
+        self,
+        method: str,
+        path: str,
+        *,
+        timeout: float | None = None,
+        json: dict[str, Any] | None = None,
+        retried: bool = False,
+    ) -> dict[str, Any]:
+        try:
+            return self._send(
+                self._request(method, self.url(path), timeout=timeout, json=json)
+            )
+        except QualtricsError as exc:
+            if (
+                not retried
+                and exc.code == "GRP_1"
+                and self._retarget(exc.datacenter_host)
+            ):
+                return self._exchange(
+                    method, path, timeout=timeout, json=json, retried=True
+                )
+            raise
 
     def get(self, path: str, timeout: float | None = None) -> dict[str, Any]:
-        return self._send(self._request("GET", self.url(path), timeout=timeout))
+        return self._exchange("GET", path, timeout=timeout)
 
     def get_bytes(self, path: str) -> bytearray:
         """Download a binary body into memory.
@@ -152,6 +242,35 @@ class QualtricsClient:
 
     def get_bytes_limited(self, path: str, limit: int, timeout: float) -> bytearray:
         """Read an export file up to ``limit`` bytes. The body is never copied into an error."""
+        return self._get_bytes_limited(path, limit, timeout, retried=False)
+
+    def _error_host(self, resp: httpx.Response) -> str | None:
+        """GRP_1 names a datacenter. Read at most 4 KiB, then wipe it."""
+        raw = bytearray()
+        try:
+            for chunk in resp.iter_bytes():
+                room = 4096 - len(raw)
+                if room <= 0:
+                    break
+                raw.extend(chunk[:room])
+            try:
+                body = json.loads(bytes(raw))
+            except ValueError:
+                return None
+            meta = body.get("meta") if isinstance(body, dict) else None
+            err = meta.get("error") if isinstance(meta, dict) else None
+            if not isinstance(err, dict) or machine_code(err.get("errorCode")) != "GRP_1":
+                return None
+            return qualtrics_host(err.get("errorMessage"))
+        finally:
+            for index in range(len(raw)):
+                raw[index] = 0
+            raw.clear()
+
+    def _get_bytes_limited(
+        self, path: str, limit: int, timeout: float, *, retried: bool
+    ) -> bytearray:
+        retry_host: str | None = None
         try:
             with self._client.stream("GET", self.url(path), timeout=timeout) as resp:
                 status = resp.status_code
@@ -162,28 +281,38 @@ class QualtricsClient:
                         429, "RateLimited", "Qualtrics rate-limited the request.", retryable=True
                     )
                 if not 200 <= status < 300:
-                    raise QualtricsError(
-                        status if status >= 400 else 502,
-                        "Api",
-                        f"Qualtrics response export failed at download (HTTP {status}).",
-                    )
-                buf = bytearray()
-                try:
-                    for chunk in resp.iter_bytes():
-                        if len(buf) + len(chunk) > limit:
-                            raise QualtricsError(
-                                502,
-                                "Api",
-                                "Qualtrics response export failed at download (file too large).",
-                            )
-                        buf.extend(chunk)
-                    kept = buf
+                    if not retried:
+                        retry_host = self._error_host(resp)
+                    if not (retry_host and self._retarget(retry_host)):
+                        raise QualtricsError(
+                            status if status >= 400 else 502,
+                            "Api",
+                            f"Qualtrics response export failed at download (HTTP {status}).",
+                        )
+                else:
                     buf = bytearray()
-                    return kept
-                finally:
-                    for index in range(len(buf)):
-                        buf[index] = 0
-                    buf.clear()
+                    try:
+                        for chunk in resp.iter_bytes():
+                            if len(buf) + len(chunk) > limit:
+                                raise QualtricsError(
+                                    502,
+                                    "Api",
+                                    "Qualtrics response export failed at download "
+                                    "(file too large).",
+                                )
+                            buf.extend(chunk)
+                        kept = buf
+                        buf = bytearray()
+                        return kept
+                    finally:
+                        for index in range(len(buf)):
+                            buf[index] = 0
+                        buf.clear()
+            if retry_host:
+                return self._get_bytes_limited(path, limit, timeout, retried=True)
+            raise QualtricsError(
+                502, "Api", "Qualtrics response export failed at download (HTTP 400)."
+            )
         except httpx.TimeoutException as exc:
             raise QualtricsError(
                 504, "Api", "Qualtrics response export failed at download (timeout)."
@@ -193,7 +322,7 @@ class QualtricsClient:
         return self._send(self._request("GET", url, timeout=timeout))
 
     def post(self, path: str, body: dict[str, Any], timeout: float | None = None) -> dict[str, Any]:
-        return self._send(self._request("POST", self.url(path), timeout=timeout, json=body))
+        return self._exchange("POST", path, timeout=timeout, json=body)
 
     def put(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         return self._send(self._request("PUT", self.url(path), json=body))

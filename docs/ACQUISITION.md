@@ -74,7 +74,7 @@ or `Q_DL` when they are not those fields makes Qualtrics return HTTP 400 for
 the whole request (`invalid columns`). Recipient id is read from whatever
 embedded fields the export actually contains. `questionIds: []` asks for no
 answer columns. If Qualtrics rejects a filtered body, the next body drops that
-filter. The last body is only `format: json` and `compress: true`. JSON and
+filter. The last body is only `format: json` and `compress: true`. A `GRP_1` response is not one of those body rejections: Qualtrics uses that code when the call reached the wrong datacenter, and the sentence names the host the API user belongs to. The client retries that host once and does not keep the sentence. JSON and
 NDJSON exports are not sent `useLabels`, `breakoutSets`, `timeZone`, or the
 other parameters the Start Response Export page says are rejected even when
 false. Answers, if a broader file is required, are discarded while parsing.

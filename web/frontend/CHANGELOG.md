@@ -5,6 +5,7 @@ All notable changes to QualSched Web are documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- Acquisition export follows the datacenter host Qualtrics names with error code GRP_1, or in a proxy notice, and retries that host once. The sentence itself is not shown or logged.
 - Acquisition export no longer fails before it reaches Qualtrics. A per-call deadline was passed into the HTTP client's send method, which rejected it, so the request became an internal error and the page only showed its own 50 second timeout. The page now shows the stage and the error type.
 - The Contacts screen was reloading the mailing list on every pass. Opening it produced a continuous stream of contact requests. It now loads once per selected profile.
 - Acquisition shows a short live status line (connecting, contacts, invitations, which survey is exporting, download, counting) while the timer runs. The web request returns as soon as that status is known; the Qualtrics calls continue in the server process. The page keeps reading that status past the server's export deadline, and a newer load stops the previous one before the next Qualtrics call.
