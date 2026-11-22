@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import * as api from "@qualsched/api";
   import {
     dayGlyph,
@@ -39,12 +40,18 @@
   $effect(() => {
     const accountId = app.selectedAccountId;
     const projectId = app.selectedProjectId;
-    report = null;
-    error = "";
-    marking = "";
-    markTickets.clear();
-    contextGeneration += 1;
-    if (accountId && projectId) void load(accountId, projectId);
+    // load() increments loadOp before its first await. Reading that state here
+    // would subscribe this effect to it, re-run the effect, abort the request,
+    // and reset the timer on every pass. Only the account and profile ids
+    // are dependencies.
+    untrack(() => {
+      report = null;
+      error = "";
+      marking = "";
+      markTickets.clear();
+      contextGeneration += 1;
+      if (accountId && projectId) void load(accountId, projectId);
+    });
     return () => {
       report = null;
       loadController?.abort();

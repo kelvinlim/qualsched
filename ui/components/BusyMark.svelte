@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { formatElapsed, formatElapsedSpoken, liveElapsed } from "../lib/busy";
+  import { formatElapsed, formatElapsedSpoken } from "../lib/busy";
 
   let { operation, label }: { operation: string | number; label: string } = $props();
   let text = $state("0:00");
@@ -7,10 +7,13 @@
 
   $effect(() => {
     const op = operation;
-    const handle = liveElapsed(op);
+    // Local start. A shared refcount finished the clock whenever one of the
+    // two indicators cleaned up, which froze the other at 0:00.
+    const startedAt = Date.now();
+    void op;
     let bucket = -1;
     const paint = () => {
-      const ms = handle.millis();
+      const ms = Math.max(0, Date.now() - startedAt);
       text = formatElapsed(ms);
       const next = Math.floor(ms / 15_000);
       if (next !== bucket) {
@@ -20,10 +23,7 @@
     };
     paint();
     const id = setInterval(paint, 250);
-    return () => {
-      clearInterval(id);
-      handle.release();
-    };
+    return () => clearInterval(id);
   });
 </script>
 
