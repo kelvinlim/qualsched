@@ -164,6 +164,7 @@ async fn list_for_survey(
                 .to_string();
             Some(DistributionRow {
                 id: e.get("id").and_then(Value::as_str)?.to_string(),
+                contact_id: String::new(),
                 contact_lookup_id: e
                     .pointer("/recipients/contactId")
                     .and_then(Value::as_str)
@@ -171,6 +172,7 @@ async fn list_for_survey(
                     .to_string(),
                 // Filled in by the command layer from the contact list.
                 contact_name: String::new(),
+                contact_ext_ref: String::new(),
                 contact_phone: String::new(),
                 contact_email: String::new(),
                 send_local: String::new(),   // ditto: needs the recipient's timezone

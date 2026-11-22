@@ -56,7 +56,9 @@ pub struct DeleteTarget {
 /// One record rather than a map per field: every one of these is keyed by the same
 /// contactLookupId and filled in the same pass.
 struct Recipient {
+    contact_id: String,
     name: String,
+    ext_ref: String,
     /// Each participant keeps their own TimeZone, so the local column has to be resolved
     /// per recipient rather than once for the table.
     zone: String,
@@ -105,7 +107,9 @@ pub async fn list_distributions(
             recipients.insert(
                 lookup,
                 Recipient {
+                    contact_id: contact.id().unwrap_or_default().to_string(),
                     name: display_name(contact),
+                    ext_ref: contact.str_field("extRef").unwrap_or_default(),
                     zone,
                     phone: contact.str_field("phone").unwrap_or_default().to_string(),
                     email: contact.str_field("email").unwrap_or_default().to_string(),
@@ -115,7 +119,9 @@ pub async fn list_distributions(
     }
     for row in &mut rows {
         if let Some(recipient) = recipients.get(&row.contact_lookup_id) {
+            row.contact_id = recipient.contact_id.clone();
             row.contact_name = recipient.name.clone();
+            row.contact_ext_ref = recipient.ext_ref.clone();
             row.contact_phone = recipient.phone.clone();
             row.contact_email = recipient.email.clone();
             row.send_local =

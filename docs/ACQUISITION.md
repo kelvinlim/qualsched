@@ -133,14 +133,15 @@ Nothing this feature creates is written to disk.
   buffer is freed. That overwrite does **not** clear copies the allocator or the
   HTTP stack already made, pages the OS has swapped out, or a crash dump taken
   while the buffer was live. QualSched cannot promise those are gone.
-- The command returns aggregate counts plus the display name Contacts already
-  shows. It does not return answers, emails, phones, response ids, or raw export
-  text. Errors from the export path are a static sentence and an HTTP status, not
-  the file body.
+- The command returns aggregate counts plus the display name and external reference
+  Contacts already shows. It does not return answers, emails, phones, response ids, or
+  raw export text. Errors from the export path are a static sentence and an HTTP status,
+  not the file body.
 - The webview holds the report in component state. It is cleared when the account
   or survey profile changes and when the screen is left. It is not put in
   `localStorage`, `sessionStorage`, IndexedDB, or the lookup cache. The only
-  `localStorage` key in the desktop shell is `qualsched.lastSeenVersion`.
+  `localStorage` keys in the desktop shell are `qualsched.lastSeenVersion` and
+  `qualsched.hidePhi` (a boolean UI preference).
 - Tauri has no HTTP cache of Qualtrics calls: the webview does not call Qualtrics.
   `reqwest` is not configured with a disk cache.
 - Config remains `config.json` in the OS app-config directory (accounts, survey

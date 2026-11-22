@@ -41,6 +41,7 @@ class PlanInputs:
     start_date: str
     timezone: str
     expire_minutes: int
+    contact_ext_ref: str = ""
 
 
 @dataclass
@@ -56,6 +57,7 @@ class BuiltItem:
     send_local: str
     send_utc: datetime
     expire_utc: datetime
+    contact_ext_ref: str = ""
 
 
 @dataclass(frozen=True)
@@ -63,6 +65,7 @@ class SkippedSlot:
     contact_id: str
     contact_name: str
     reason: str
+    contact_ext_ref: str = ""
 
 
 def hhmm_to_minutes(hhmm: int) -> int:
@@ -147,7 +150,7 @@ def build_contact_plan(
     skipped: list[SkippedSlot] = []
 
     def skip(reason: str) -> SkippedSlot:
-        return SkippedSlot(input.contact_id, input.contact_name, reason)
+        return SkippedSlot(input.contact_id, input.contact_name, reason, input.contact_ext_ref)
 
     try:
         tz = ZoneInfo(input.timezone)
@@ -198,6 +201,7 @@ def build_contact_plan(
                 BuiltItem(
                     contact_id=input.contact_id,
                     contact_name=input.contact_name,
+                    contact_ext_ref=input.contact_ext_ref,
                     destination=input.destination,
                     method=input.method,
                     day_index=day,

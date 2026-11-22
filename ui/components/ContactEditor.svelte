@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isPhiCoreField, participantLabel, PHI_MASK } from "../lib/phi";
   import type { ContactView } from "../lib/types";
   import BusyMark from "./BusyMark.svelte";
 
@@ -26,12 +27,14 @@
   let {
     contact = null,
     busy = false,
+    hidePhi = false,
     onsave,
     oncancel,
   }: {
     /** null when adding a new participant. */
     contact?: ContactView | null;
     busy?: boolean;
+    hidePhi?: boolean;
     onsave: (core: Record<string, string>, embedded: Record<string, string>) => void;
     oncancel: () => void;
   } = $props();
@@ -105,15 +108,38 @@
   <h2>
     {isNew
       ? "Add a participant"
-      : `Editing ${[contact?.firstName, contact?.lastName].filter(Boolean).join(" ") || contact?.contactId}`}
+      : `Editing ${participantLabel(
+          hidePhi,
+          [contact?.firstName, contact?.lastName].filter(Boolean).join(" ") || contact?.contactId,
+          contact?.extRef,
+          contact?.contactId,
+        )}`}
   </h2>
 
   <h3>Who they are</h3>
+  {#if hidePhi}
+    <div class="hint" style="margin-bottom: 0.6rem;">
+      {isNew
+        ? "Name, email, and phone are locked while Hide PHI is on. Uncheck Hide PHI to enter them, or use External reference."
+        : "Name, email, and phone are hidden while Hide PHI is on. Uncheck Hide PHI to view or edit them."}
+    </div>
+  {/if}
   <div class="grid3">
     {#each CORE as field (field.key)}
+      {@const masked = hidePhi && isPhiCoreField(field.key)}
       <div class="field">
         <label for={`core-${field.key}`}>{field.label}</label>
-        <input id={`core-${field.key}`} type="text" bind:value={core[field.key]} />
+        {#if masked}
+          <input
+            id={`core-${field.key}`}
+            type="text"
+            value={core[field.key]?.trim() ? PHI_MASK : ""}
+            placeholder="Hidden"
+            disabled
+          />
+        {:else}
+          <input id={`core-${field.key}`} type="text" bind:value={core[field.key]} />
+        {/if}
         {#if field.key === "phone"}
           <div class="hint">Include the country code, e.g. 16125551234.</div>
         {/if}

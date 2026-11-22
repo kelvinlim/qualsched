@@ -52,7 +52,9 @@ struct Progress {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ItemFailure {
+    pub contact_id: String,
     pub contact_name: String,
+    pub contact_ext_ref: String,
     pub destination: String,
     pub send_local: String,
     pub error: String,
@@ -105,6 +107,7 @@ pub async fn preview_schedule(
     for contact in &raw {
         let name = display_name(contact);
         let contact_id = contact.id().unwrap_or_default().to_string();
+        let ext_ref = contact.str_field("extRef").unwrap_or_default();
         let embedded = contact.embedded();
         let defaults = EligibilityDefaults {
             timezone: &project.timezone,
@@ -115,6 +118,7 @@ pub async fn preview_schedule(
             Eligibility::Skipped(reason) => skipped_contacts.push(Skipped {
                 contact_id,
                 contact_name: name,
+                contact_ext_ref: ext_ref,
                 reason,
             }),
             Eligibility::Eligible {
@@ -133,6 +137,7 @@ pub async fn preview_schedule(
                     skipped_contacts.push(Skipped {
                         contact_id,
                         contact_name: name,
+                        contact_ext_ref: ext_ref,
                         reason: format!(
                             "no {} on record",
                             if method == Method::Sms { "phone number" } else { "email address" }
@@ -144,6 +149,7 @@ pub async fn preview_schedule(
                 let input = PlanInputs {
                     contact_id: &contact_id,
                     contact_name: &name,
+                    contact_ext_ref: &ext_ref,
                     destination: &destination,
                     method,
                     slots: &slots,
@@ -160,6 +166,7 @@ pub async fn preview_schedule(
                     skipped_contacts.push(Skipped {
                         contact_id,
                         contact_name: name,
+                        contact_ext_ref: ext_ref,
                         reason: format!(
                             "all {} slots dropped ({})",
                             dropped.len(),
@@ -244,7 +251,9 @@ pub async fn execute_schedule(
         done += 1;
 
         let fail = |error: String, retryable: bool| ItemFailure {
+            contact_id: item.contact_id.clone(),
             contact_name: item.contact_name.clone(),
+            contact_ext_ref: item.contact_ext_ref.clone(),
             destination: item.destination.clone(),
             send_local: item.send_local.clone(),
             error,
@@ -395,7 +404,9 @@ pub async fn execute_schedule(
         .await
         {
             bookkeeping_failures.push(ItemFailure {
+                contact_id: contact_id.clone(),
                 contact_name: display_name(contact),
+                contact_ext_ref: contact.str_field("extRef").unwrap_or_default(),
                 destination: String::new(),
                 send_local: String::new(),
                 error: format!(

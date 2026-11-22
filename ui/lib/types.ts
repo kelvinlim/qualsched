@@ -89,6 +89,7 @@ export type Method = "sms" | "email";
 export interface PlanItem {
   contactId: string;
   contactName: string;
+  contactExtRef?: string;
   destination: string;
   method: Method;
   dayIndex: number;
@@ -104,6 +105,7 @@ export interface PlanItem {
 export interface Skipped {
   contactId: string;
   contactName: string;
+  contactExtRef?: string;
   reason: string;
 }
 
@@ -116,7 +118,9 @@ export interface SchedulePreview {
 }
 
 export interface ItemFailure {
+  contactId?: string;
   contactName: string;
+  contactExtRef?: string;
   destination: string;
   sendLocal: string;
   error: string;
@@ -131,8 +135,10 @@ export interface SendReport {
 
 export interface DistributionRow {
   id: string;
+  contactId?: string;
   contactLookupId: string;
   contactName: string;
+  contactExtRef?: string;
   /** Carried so the table can be searched by them; empty if the recipient was not resolved. */
   contactPhone: string;
   contactEmail: string;
@@ -231,6 +237,7 @@ export interface AcquisitionExcluded {
 export interface AcquisitionRow {
   contactId: string;
   displayName: string;
+  extRef?: string;
   monitor: "active" | "inactive";
   timezone: string;
   timezoneSource: "contact" | "profile" | "invalid" | "missing";

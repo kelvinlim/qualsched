@@ -156,6 +156,7 @@ class RemovedContact(BaseModel):
 class PlanItem(BaseModel):
     contactId: str
     contactName: str
+    contactExtRef: str = ""
     destination: str
     method: Literal["sms", "email"]
     dayIndex: int
@@ -183,6 +184,7 @@ class PlanItem(BaseModel):
 class Skipped(BaseModel):
     contactId: str
     contactName: str
+    contactExtRef: str = ""
     reason: str
 
 
@@ -194,7 +196,9 @@ class SchedulePreview(BaseModel):
 
 
 class ItemFailure(BaseModel):
+    contactId: str = ""
     contactName: str
+    contactExtRef: str = ""
     destination: str
     sendLocal: str
     error: str
@@ -209,8 +213,10 @@ class SendReport(BaseModel):
 
 class DistributionRow(BaseModel):
     id: str
+    contactId: str = ""
     contactLookupId: str = ""
     contactName: str = ""
+    contactExtRef: str = ""
     contactPhone: str = ""
     contactEmail: str = ""
     sendDate: str = ""

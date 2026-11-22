@@ -4,7 +4,10 @@ All notable changes to QualSched Web are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-11-22
+
 ### Added
+- **Hide PHI** UI support and `extRef`/`contactId` fields on Schedule, Distributions, and Acquisition responses.
 - Acquisition route: server-side response export reduced to completion counts.
   No new database tables and no participant rows stored.
 

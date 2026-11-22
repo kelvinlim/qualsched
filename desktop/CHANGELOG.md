@@ -2,7 +2,7 @@
 
 All notable changes to QualSched are documented in this file.
 
-## [Unreleased]
+## [0.2.4] - 2026-11-22
 
 ### Fixed
 - Acquisition export follows the datacenter host Qualtrics names with error code GRP_1, or in a proxy notice, and retries that host once. The sentence itself is not kept.
@@ -15,6 +15,7 @@ All notable changes to QualSched are documented in this file.
   fallbacks that still sent them.
 
 ### Added
+- **Hide PHI** checkbox in the top bar: replaces participant names with `extRef` (falling back to Qualtrics contact ID), masks phone numbers, email addresses, and destinations, and locks/masks identity fields in the Contact editor. Defaults off and persists in `localStorage`.
 - **Acquisition** screen: per-participant daily blocks of completed surveys versus
   invitations still listed in Qualtrics. Counts use finished responses with an exact
   contact id, not the fact that an invitation was sent. Active/inactive is a display

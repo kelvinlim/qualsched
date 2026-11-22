@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as api from "@qualsched/api";
+  import { maskPhiText, participantLabel } from "../lib/phi";
   import { app } from "../lib/state.svelte";
   import {
     errorMessage,
@@ -130,7 +131,14 @@
           <tbody>
             {#each report.failed as failure, i (i)}
               <tr>
-                <td>{failure.contactName}</td>
+                <td class:mono={app.hidePhi}>
+                  {participantLabel(
+                    app.hidePhi,
+                    failure.contactName,
+                    failure.contactExtRef,
+                    failure.contactId,
+                  )}
+                </td>
                 <td class="mono">{failure.sendLocal}</td>
                 <td class="wrap">{failure.error}</td>
               </tr>
@@ -148,7 +156,14 @@
       will schedule them a second time.
       <ul>
         {#each report.bookkeepingFailures as failure, i (i)}
-          <li>{failure.contactName}: {failure.error}</li>
+          <li>
+            {participantLabel(
+              app.hidePhi,
+              failure.contactName,
+              failure.contactExtRef,
+              failure.contactId,
+            )}: {failure.error}
+          </li>
         {/each}
       </ul>
     </div>
@@ -188,8 +203,15 @@
           <tbody>
             {#each preview.items as item, i (i)}
               <tr>
-                <td>{item.contactName}</td>
-                <td class="mono">{item.destination}</td>
+                <td class:mono={app.hidePhi}>
+                  {participantLabel(
+                    app.hidePhi,
+                    item.contactName,
+                    item.contactExtRef,
+                    item.contactId,
+                  )}
+                </td>
+                <td class="mono">{maskPhiText(app.hidePhi, item.destination)}</td>
                 <td>{item.method}</td>
                 <td>{item.dayIndex + 1}</td>
                 <td class="mono">{item.slotLabel}</td>
@@ -213,7 +235,14 @@
           <tbody>
             {#each preview.skippedContacts as skip, i (i)}
               <tr>
-                <td>{skip.contactName}</td>
+                <td class:mono={app.hidePhi}>
+                  {participantLabel(
+                    app.hidePhi,
+                    skip.contactName,
+                    skip.contactExtRef,
+                    skip.contactId,
+                  )}
+                </td>
                 <td class="wrap">{skip.reason}</td>
               </tr>
             {/each}
@@ -236,7 +265,14 @@
           <tbody>
             {#each preview.skippedSlots as skip, i (i)}
               <tr>
-                <td>{skip.contactName}</td>
+                <td class:mono={app.hidePhi}>
+                  {participantLabel(
+                    app.hidePhi,
+                    skip.contactName,
+                    skip.contactExtRef,
+                    skip.contactId,
+                  )}
+                </td>
                 <td class="wrap">{skip.reason}</td>
               </tr>
             {/each}

@@ -1,6 +1,7 @@
 <script lang="ts">
   import * as api from "@qualsched/api";
   import { matchesQuery } from "../lib/filter";
+  import { maskPhiText, participantLabel } from "../lib/phi";
   import { app } from "../lib/state.svelte";
   import { errorMessage, type DistributionRow, type Method } from "../lib/types";
   import BusyMark from "../components/BusyMark.svelte";
@@ -27,6 +28,13 @@
     selected = new Set();
     query = "";
     notice = "";
+  });
+
+  // Turning Hide PHI on clears any search text that could carry a participant's name/phone/email.
+  $effect(() => {
+    if (app.hidePhi) {
+      query = "";
+    }
   });
 
   async function load() {
@@ -82,10 +90,21 @@
     selected = next;
   }
 
+  function rowLabel(row: DistributionRow): string {
+    return participantLabel(
+      app.hidePhi,
+      row.contactName || "(unknown)",
+      row.contactExtRef,
+      row.contactId || row.contactLookupId || row.id,
+    );
+  }
+
   let listed = $derived(unsentOnly ? rows.filter((r) => r.unsent) : rows);
   let visible = $derived(
     listed.filter((r) =>
-      matchesQuery(query, [r.contactName, r.contactPhone, r.contactEmail]),
+      app.hidePhi
+        ? matchesQuery(query, [r.contactExtRef ?? "", r.contactId ?? "", r.contactLookupId, r.id])
+        : matchesQuery(query, [r.contactName, r.contactPhone, r.contactEmail, r.contactExtRef ?? ""]),
     ),
   );
 
@@ -142,7 +161,7 @@
     class="search"
     type="search"
     bind:value={query}
-    placeholder="Search name, phone or email"
+    placeholder={app.hidePhi ? "Search external reference or ID" : "Search name, phone or email"}
     aria-label="Search invitations"
   />
   {#if query.trim()}
@@ -213,12 +232,12 @@
                 type="checkbox"
                 checked={selected.has(row.id)}
                 onchange={() => toggle(row.id)}
-                aria-label={`Select invitation for ${row.contactName || row.id}`}
+                aria-label={`Select invitation for ${rowLabel(row)}`}
               />
             </td>
-            <td>{row.contactName || "(unknown)"}</td>
-            <td class="mono">{row.contactPhone || "—"}</td>
-            <td class="mono">{row.contactEmail || "—"}</td>
+            <td class:mono={app.hidePhi}>{rowLabel(row)}</td>
+            <td class="mono">{maskPhiText(app.hidePhi, row.contactPhone)}</td>
+            <td class="mono">{maskPhiText(app.hidePhi, row.contactEmail)}</td>
             <td class="mono">{row.surveyLabel}</td>
             <td class="mono">{row.sendLocal || "—"}</td>
             <td class="mono">{row.sendDate.replace("T", " ").replace("Z", "")}</td>

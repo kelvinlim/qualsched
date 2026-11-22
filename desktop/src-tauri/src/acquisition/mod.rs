@@ -80,6 +80,7 @@ pub struct Participant {
     pub contact_id: String,
     pub lookup_id: String,
     pub display_name: String,
+    pub ext_ref: String,
     pub timezone_name: String,
     pub start_date: String,
     pub num_days: i64,
@@ -150,6 +151,7 @@ pub struct ExcludedCounts {
 pub struct AcquisitionRow {
     pub contact_id: String,
     pub display_name: String,
+    pub ext_ref: String,
     pub monitor: String,
     pub timezone: String,
     pub timezone_source: String,
@@ -1033,6 +1035,7 @@ pub fn aggregate(
         rows.push(AcquisitionRow {
             contact_id: person.contact_id.clone(),
             display_name: person.display_name.clone(),
+            ext_ref: person.ext_ref.clone(),
             monitor: monitor.to_string(),
             timezone: zone.map(|tz| tz.to_string()).unwrap_or_default(),
             timezone_source: source.to_string(),
@@ -1121,6 +1124,7 @@ mod tests {
             contact_id: "CID_ada".into(),
             lookup_id: "CGC_ada".into(),
             display_name: "Ada Lovelace".into(),
+            ext_ref: "P1".into(),
             timezone_name: "America/Chicago".into(),
             start_date: "2026-07-13".into(),
             num_days: 5,
