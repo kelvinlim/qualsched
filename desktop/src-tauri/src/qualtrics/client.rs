@@ -7,6 +7,10 @@ use crate::error::{AppError, AppResult};
 /// Qualtrics throttles bursts; a small gap between writes keeps large batches under the limit.
 pub const WRITE_PACING: Duration = Duration::from_millis(120);
 
+/// Desktop has no 60-second proxy in front of the download. The body is still
+/// capped at 32 MiB; this deadline is only the socket timeout.
+pub const EXPORT_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(300);
+
 pub struct QualtricsClient {
     http: reqwest::Client,
     data_center: String,
@@ -115,7 +119,7 @@ impl QualtricsClient {
             .prepare(
                 self.http
                     .get(self.url(path))
-                    .timeout(Duration::from_secs(40)),
+                    .timeout(EXPORT_DOWNLOAD_TIMEOUT),
             )
             .send()
             .await?;
@@ -271,6 +275,11 @@ mod tests {
 
     fn client() -> QualtricsClient {
         QualtricsClient::new("yul1", "token", true).unwrap()
+    }
+
+    #[test]
+    fn export_download_keeps_the_long_desktop_timeout() {
+        assert_eq!(EXPORT_DOWNLOAD_TIMEOUT, Duration::from_secs(300));
     }
 
     // A second Content-Type header made Qualtrics reject every write.

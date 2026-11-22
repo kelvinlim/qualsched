@@ -11,13 +11,16 @@ import pytest
 
 from app.acquisition import (
     DENOMINATOR_NOTE,
+    EXPORT_DEADLINE_S,
     MAX_SPAN_DAYS,
     MONITOR_FIELD,
     PREREQUISITE,
     AcquisitionParseError,
     Invitation,
     Participant,
+    PendingExport,
     _start_export,
+    acquisition_step,
     aggregate,
     export_failure,
     export_request_bodies,
@@ -652,6 +655,19 @@ def _install(monkeypatch, fake: FakeQualtrics):
     monkeypatch.setattr("app.acquisition.time.sleep", lambda _seconds: None)
 
 
+def _follow(http, headers: dict | None = None):
+    """Walk the short export slices the way the browser does."""
+    sent = {"X-Qualsched-Attempt": "attempt-follow"}
+    if headers:
+        sent.update(headers)
+    response = None
+    for _ in range(8):
+        response = http.get(BASE, headers=sent)
+        if response.status_code != 202:
+            return response
+    raise AssertionError(getattr(response, "text", "export did not finish"))
+
+
 def test_http_report_strips_answers_and_keeps_ratio(ctx, monkeypatch):
     http, _, _ = ctx
     _ready_account(http)
@@ -678,7 +694,7 @@ def test_http_report_strips_answers_and_keeps_ratio(ctx, monkeypatch):
         }
     )
     _install(monkeypatch, fake)
-    response = http.get(BASE)
+    response = _follow(http)
     assert response.status_code == 200, response.text
     assert response.headers.get("cache-control") == "no-store"
     body = response.json()
@@ -703,7 +719,7 @@ def test_http_error_path_does_not_echo_export_bytes(ctx, monkeypatch):
     fake = FakeQualtrics(f"broken {SECRET_ANSWER}".encode())
     fake.add(_contact())
     _install(monkeypatch, fake)
-    response = http.get(BASE)
+    response = _follow(http)
     assert response.status_code == 502
     assert SECRET_ANSWER not in response.text
     assert EMAIL not in response.text
@@ -730,7 +746,7 @@ def test_status_roundtrip_keeps_eligibility_and_does_not_cancel(ctx, monkeypatch
         defaults,
     ), str)
 
-    again = http.get(BASE)
+    again = _follow(http)
     assert again.status_code == 200
     row = again.json()["rows"][0]
     assert row["monitor"] == "inactive"
@@ -1097,9 +1113,14 @@ def test_in_progress_export_continues_on_the_same_attempt(ctx, monkeypatch):
     assert EMAIL not in first.text
     assert "FILE1" not in first.text
     second = http.get(BASE, headers=headers)
-    assert second.status_code == 200, second.text
-    assert second.json()["rows"][0]["displayName"] == "Ada Lovelace"
-    assert EMAIL not in second.text
+    assert second.status_code == 202, second.text
+    assert second.json()["stage"] == "download"
+    assert not any(call[0] == "get_bytes" for call in fake.calls)
+    third = http.get(BASE, headers=headers)
+    assert third.status_code == 200, third.text
+    assert third.json()["rows"][0]["displayName"] == "Ada Lovelace"
+    assert EMAIL not in third.text
+    assert any(call[0] == "get_bytes" for call in fake.calls)
     restarted = http.get(BASE, headers={"X-Qualsched-Attempt": "attempt-two"})
     assert restarted.status_code in (200, 202)
 
@@ -1207,7 +1228,140 @@ def test_client_extracts_error_code_without_putting_the_sentence_in_the_stage_er
         client.close()
 
 
+def test_limited_download_drops_an_oversized_body_without_echoing_it():
+    payload = b"SECRET-BYTES-ABCDEF"
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=payload)
+
+    client = QualtricsClient("yul1", "token")
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    try:
+        client.get_bytes_limited("surveys/SV_1/export-responses/FILE/file", 4, 5)
+    except QualtricsError as exc:
+        assert exc.message == "Qualtrics response export failed at download (file too large)."
+        assert b"SECRET" not in exc.message.encode()
+    else:
+        raise AssertionError("an oversized stream should not be returned")
+    finally:
+        client.close()
+
+
 def test_export_failure_rejects_a_code_that_is_not_a_machine_token():
     err = export_failure("start", status=400, code="RecipientID missing")
     assert err.message == "Qualtrics response export failed at start (HTTP 400)."
     assert "RecipientID" not in err.message
+
+
+def _account_profile():
+    account = QualtricsAccount(
+        id=AID,
+        owner_user_id=1,
+        name="UMN",
+        data_center="yul1",
+        verify_tls=True,
+        default_directory="POOL_abc",
+        library_id="GR_lib",
+    )
+    profile = SurveyProfile(
+        id=PID,
+        account_id=AID,
+        name="EMA",
+        survey_id="SV_1",
+        mailing_list_id="CG_list",
+        timezone="America/Chicago",
+    )
+    return account, profile
+
+
+def test_older_attempt_cannot_replace_the_export_a_newer_attempt_owns():
+    fake = FakeQualtrics(_zip([]))
+    fake.add(_contact())
+    posts = {"n": 0}
+
+    def post(path: str, body: dict, timeout: float | None = None):
+        posts["n"] += 1
+        return {"result": {"progressId": f"PROG{posts['n']}"}}
+
+    def get(path: str, timeout: float | None = None):
+        if "export-responses/" in path:
+            return {"result": {"status": "inProgress", "percentComplete": 1}}
+        return FakeQualtrics.get(fake, path, timeout)
+
+    fake.post = post
+    fake.get = get
+    account, profile = _account_profile()
+    first = acquisition_step(fake, account, profile, user_id=1, attempt="attempt-a", now=NOW, clock=lambda: 0)
+    assert isinstance(first, PendingExport)
+    second = acquisition_step(fake, account, profile, user_id=1, attempt="attempt-b", now=NOW, clock=lambda: 0)
+    assert isinstance(second, PendingExport)
+    assert posts["n"] == 2
+    try:
+        acquisition_step(fake, account, profile, user_id=1, attempt="attempt-a", now=NOW, clock=lambda: 0)
+    except QualtricsError as exc:
+        assert exc.message == "Qualtrics response export failed at poll (superseded)."
+        assert exc.status == 409
+    else:
+        raise AssertionError("the older attempt should stop")
+    assert posts["n"] == 2
+    continued = acquisition_step(
+        fake, account, profile, user_id=1, attempt="attempt-b", now=NOW, clock=lambda: 0
+    )
+    assert isinstance(continued, PendingExport)
+    assert posts["n"] == 2
+
+
+def test_deadline_keeps_primary_counts_when_a_copy_is_still_running():
+    fake = FakeQualtrics(
+        _zip(
+            [
+                _response(
+                    "R1",
+                    finished=1,
+                    status=0,
+                    RecipientID="CID_ada",
+                    endDate="2026-07-14T13:30:00Z",
+                )
+            ]
+        )
+    )
+    fake.add(_contact())
+    account, profile = _account_profile()
+    profile.survey_copies = [{"id": "SV_copy", "name": "old"}]
+    clock = {"t": 0, "got": False}
+
+    def post(path: str, body: dict, timeout: float | None = None):
+        return {"result": {"progressId": "PROG1"}}
+
+    def get(path: str, timeout: float | None = None):
+        if "SV_copy" in path and "export-responses/" in path:
+            return {"result": {"status": "inProgress", "percentComplete": 1, "error": {"message": EMAIL}}}
+        if "export-responses/" in path:
+            return {"result": {"status": "complete", "percentComplete": 100, "fileId": "FILE1"}}
+        return FakeQualtrics.get(fake, path, timeout)
+
+    def get_bytes(path: str) -> bytearray:
+        clock["got"] = True
+        return bytearray(fake.export)
+
+    fake.post = post
+    fake.get = get
+    fake.get_bytes = get_bytes
+
+    def pause(_seconds: float) -> None:
+        if clock["got"]:
+            clock["t"] = EXPORT_DEADLINE_S + 1
+
+    report = load_report(
+        fake,
+        account,
+        profile,
+        now=NOW,
+        sleep=pause,
+        clock=lambda: clock["t"],
+        attempt="attempt-deadline",
+        user_id=1,
+    )
+    assert report.rows[0].displayName == "Ada Lovelace"
+    assert any("leftover survey copy" in item for item in report.limitations)
+    assert EMAIL not in report.model_dump_json()

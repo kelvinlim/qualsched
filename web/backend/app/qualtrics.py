@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import ssl
-from typing import Any
+from typing import Any, Self
 
 import httpx
 
@@ -64,7 +64,7 @@ class QualtricsClient:
     def close(self) -> None:
         self._client.close()
 
-    def __enter__(self) -> QualtricsClient:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *exc: object) -> None:
@@ -150,16 +150,22 @@ class QualtricsClient:
                         f"Qualtrics response export failed at download (HTTP {status}).",
                     )
                 buf = bytearray()
-                for chunk in resp.iter_bytes():
-                    if len(buf) + len(chunk) > limit:
-                        buf.clear()
-                        raise QualtricsError(
-                            502,
-                            "Api",
-                            "Qualtrics response export failed at download (file too large).",
-                        )
-                    buf.extend(chunk)
-                return buf
+                try:
+                    for chunk in resp.iter_bytes():
+                        if len(buf) + len(chunk) > limit:
+                            raise QualtricsError(
+                                502,
+                                "Api",
+                                "Qualtrics response export failed at download (file too large).",
+                            )
+                        buf.extend(chunk)
+                    kept = buf
+                    buf = bytearray()
+                    return kept
+                finally:
+                    for index in range(len(buf)):
+                        buf[index] = 0
+                    buf.clear()
         except httpx.TimeoutException as exc:
             raise QualtricsError(
                 504, "Api", "Qualtrics response export failed at download (timeout)."

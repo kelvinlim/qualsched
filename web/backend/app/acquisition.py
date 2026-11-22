@@ -889,14 +889,21 @@ POLL_LIMIT_PER_SURVEY = 160
 POLL_LIMIT_TOTAL = 240
 EXPORT_DEADLINE_S = 8 * 60
 
-_EXPORT_DETAILS = frozenset({"timeout", "export status failed", "file too large", "could not be read"})
+_EXPORT_DETAILS = frozenset(
+    {"timeout", "export status failed", "file too large", "could not be read", "superseded"}
+)
 _JOBS: dict[tuple[int, str, str], _ExportJob] = {}
 _JOB_LOCK = threading.Lock()
+_NEXT_GENERATION = 0
+_SUPERSEDED: set[tuple[tuple[int, str, str], str]] = set()
 
 
 def reset_acquisition_jobs() -> None:
+    global _NEXT_GENERATION
     with _JOB_LOCK:
         _JOBS.clear()
+        _SUPERSEDED.clear()
+        _NEXT_GENERATION = 0
 
 
 def export_failure(
@@ -926,6 +933,8 @@ def export_failure(
         http = status
     elif detail == "timeout" or stage == "timeout":
         http = 504
+    elif detail == "superseded":
+        http = 409
     return QualtricsError(http, "Api", message, code=safe)
 
 
@@ -1083,6 +1092,8 @@ class _ExportJob:
     polls_survey: int = 0
     poll_limit_survey: int = POLL_LIMIT_PER_SURVEY
     poll_limit_total: int = POLL_LIMIT_TOTAL
+    file_id: str | None = None
+    generation: int = 0
 
     def __post_init__(self) -> None:
         if self.responses is None:
@@ -1137,67 +1148,82 @@ def _skip_copy_or_raise(job: _ExportJob, primary: bool, exc: QualtricsError | No
     return _report_from_job(job)
 
 
+def _download_ready(job: _ExportJob, client: QualtricsClient, survey_id: str, primary: bool):
+    """Download one finished export. Returns a report when this was the last survey."""
+    try:
+        blob = _read_export(client, survey_id, job.file_id or "")
+        try:
+            found = parse_export_bytes(blob)
+        except AcquisitionParseError:
+            raise export_failure("parse", detail="could not be read") from None
+        finally:
+            _wipe(blob)
+    except QualtricsError as exc:
+        done = _skip_copy_or_raise(job, primary, exc)
+        if done is not None:
+            return done
+        return PendingExport("start")
+    assert job.responses is not None
+    job.responses.extend(found)
+    job.file_id = None
+    if not _advance_survey(job):
+        return _report_from_job(job)
+    return PendingExport("start")
+
+
 def _step_export(job: _ExportJob, client: QualtricsClient, clock) -> AcquisitionReport | PendingExport:
-    """Create, poll once, or download. A still-running export returns pending."""
-    while True:
-        if clock() > job.deadline:
-            if job.index > 0:
-                job.copy_failed = True
-                return _report_from_job(job)
-            raise export_failure("poll", detail="timeout")
-        survey_id = job.survey_ids[job.index]
-        primary = survey_id == job.primary
-        if job.phase == "create":
-            try:
-                progress, used = _start_export(client, survey_id)
-            except QualtricsError as exc:
-                done = _skip_copy_or_raise(job, primary, exc)
-                if done is not None:
-                    return done
-                continue
-            job.progress_id = progress
-            if _MODE_RANK[used] > _MODE_RANK[job.mode]:
-                job.mode = used
-            job.phase = "poll"
-        try:
-            file_id = _poll_once(client, survey_id, job.progress_id or "")
-        except QualtricsError as exc:
-            done = _skip_copy_or_raise(job, primary, exc)
-            if done is not None:
-                return done
-            continue
-        if file_id is None:
-            job.polls += 1
-            job.polls_survey += 1
-            if (
-                job.polls_survey > job.poll_limit_survey
-                or job.polls > job.poll_limit_total
-                or clock() > job.deadline
-            ):
-                if not primary:
-                    job.copy_failed = True
-                    if not _advance_survey(job):
-                        return _report_from_job(job)
-                    continue
-                raise export_failure("poll", detail="timeout")
-            return PendingExport("poll")
-        try:
-            blob = _read_export(client, survey_id, file_id)
-            try:
-                found = parse_export_bytes(blob)
-            except AcquisitionParseError:
-                raise export_failure("parse", detail="could not be read") from None
-            finally:
-                _wipe(blob)
-        except QualtricsError as exc:
-            done = _skip_copy_or_raise(job, primary, exc)
-            if done is not None:
-                return done
-            continue
-        assert job.responses is not None
-        job.responses.extend(found)
-        if not _advance_survey(job):
+    """One slice: create, a single poll, or one download.
+
+    A request that sees ``complete`` does not also download, and a download
+    does not start the next survey. Each of those is its own request so the
+    60 second proxy is not holding the file transfer plus another export.
+    """
+    if clock() > job.deadline:
+        if job.index > 0:
+            job.copy_failed = True
             return _report_from_job(job)
+        raise export_failure("poll", detail="timeout")
+    survey_id = job.survey_ids[job.index]
+    primary = survey_id == job.primary
+    if job.phase == "download":
+        return _download_ready(job, client, survey_id, primary)
+    if job.phase == "create":
+        try:
+            progress, used = _start_export(client, survey_id)
+        except QualtricsError as exc:
+            done = _skip_copy_or_raise(job, primary, exc)
+            if done is not None:
+                return done
+            return PendingExport("start")
+        job.progress_id = progress
+        if _MODE_RANK[used] > _MODE_RANK[job.mode]:
+            job.mode = used
+        job.phase = "poll"
+    try:
+        file_id = _poll_once(client, survey_id, job.progress_id or "")
+    except QualtricsError as exc:
+        done = _skip_copy_or_raise(job, primary, exc)
+        if done is not None:
+            return done
+        return PendingExport("start")
+    if file_id is None:
+        job.polls += 1
+        job.polls_survey += 1
+        if (
+            job.polls_survey > job.poll_limit_survey
+            or job.polls > job.poll_limit_total
+            or clock() > job.deadline
+        ):
+            if not primary:
+                job.copy_failed = True
+                if not _advance_survey(job):
+                    return _report_from_job(job)
+                return PendingExport("start")
+            raise export_failure("poll", detail="timeout")
+        return PendingExport("poll")
+    job.file_id = file_id
+    job.phase = "download"
+    return PendingExport("download")
 
 
 def _new_job(
@@ -1312,25 +1338,65 @@ def acquisition_step(
     """
     key = (user_id, account.id, profile.id)
     moment = now or datetime.now(UTC)
+    global _NEXT_GENERATION
     with _JOB_LOCK:
-        job = _JOBS.get(key)
-        if job is not None and job.attempt != attempt:
-            _JOBS.pop(key, None)
+        current = _JOBS.get(key)
+        if (key, attempt) in _SUPERSEDED:
+            raise export_failure("poll", detail="superseded")
+        if current is not None and current.attempt == attempt and current.phase != "prepare":
+            if clock() > current.deadline:
+                _JOBS.pop(key, None)
+                if current.index > 0:
+                    current.copy_failed = True
+                    return _report_from_job(current)
+                raise export_failure("poll", detail="timeout")
+            job = current
+            claim = None
+        else:
+            # A new attempt claims the slot before the slow contact listing, so an
+            # older request cannot store its job back over this one when it finishes.
+            if current is not None and current.attempt != attempt:
+                _SUPERSEDED.add((key, current.attempt))
+            _NEXT_GENERATION += 1
+            claim = _ExportJob(
+                attempt=attempt,
+                primary="",
+                survey_ids=[""],
+                participants=[],
+                invitations=[],
+                sms_missing=False,
+                moment=moment,
+                profile_timezone="",
+                deadline=clock() + EXPORT_DEADLINE_S,
+                phase="prepare",
+                generation=_NEXT_GENERATION,
+            )
+            _JOBS[key] = claim
             job = None
-        elif job is not None and clock() > job.deadline:
-            _JOBS.pop(key, None)
-            raise export_failure("poll", detail="timeout")
     if job is None:
-        job = _new_job(
-            client,
-            account,
-            profile,
-            attempt=attempt,
-            moment=moment,
-            clock=clock,
-            poll_limit_survey=poll_limit_survey,
-            poll_limit_total=poll_limit_total,
-        )
+        assert claim is not None
+        try:
+            built = _new_job(
+                client,
+                account,
+                profile,
+                attempt=attempt,
+                moment=moment,
+                clock=clock,
+                poll_limit_survey=poll_limit_survey,
+                poll_limit_total=poll_limit_total,
+            )
+        except Exception:
+            with _JOB_LOCK:
+                if _JOBS.get(key) is claim:
+                    _JOBS.pop(key, None)
+            raise
+        built.generation = claim.generation
+        with _JOB_LOCK:
+            if _JOBS.get(key) is not claim:
+                raise export_failure("poll", detail="superseded")
+            _JOBS[key] = built
+        job = built
     try:
         outcome = _step_export(job, client, clock)
     except Exception:
@@ -1339,9 +1405,13 @@ def acquisition_step(
                 _JOBS.pop(key, None)
         raise
     with _JOB_LOCK:
+        if _JOBS.get(key) is not job:
+            if isinstance(outcome, PendingExport):
+                raise export_failure("poll", detail="superseded")
+            return outcome
         if isinstance(outcome, PendingExport):
             _JOBS[key] = job
-        elif _JOBS.get(key) is job:
+        else:
             _JOBS.pop(key, None)
     return outcome
 
