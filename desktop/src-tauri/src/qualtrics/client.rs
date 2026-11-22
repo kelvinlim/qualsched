@@ -156,6 +156,24 @@ impl QualtricsClient {
     /// Binary download. The error text is only the HTTP status — export files can
     /// contain participant data and must not be copied into an error or a log.
     pub async fn get_bytes(&self, path: &str) -> AppResult<Vec<u8>> {
+        let mut retried = false;
+        loop {
+            let outcome = self.read_download(path).await?;
+            match outcome {
+                Download::Body(buf) => return Ok(buf),
+                Download::Retry { host, .. } if !retried && self.retarget(&host) => {
+                    retried = true;
+                }
+                Download::Retry { status, .. } | Download::Failed(status) => {
+                    return Err(AppError::Api(format!(
+                        "Qualtrics response export failed at download (HTTP {status})."
+                    )));
+                }
+            }
+        }
+    }
+
+    async fn read_download(&self, path: &str) -> AppResult<Download> {
         let mut resp = self
             .prepare(
                 self.http
@@ -172,11 +190,14 @@ impl QualtricsClient {
             return Err(AppError::RateLimited);
         }
         if !status.is_success() {
-            let _ = resp.bytes().await;
-            return Err(AppError::Api(format!(
-                "Qualtrics response export failed at download (HTTP {}).",
-                status.as_u16()
-            )));
+            let host = download_error_host(&mut resp).await;
+            return Ok(match host {
+                Some(host) => Download::Retry {
+                    host,
+                    status: status.as_u16(),
+                },
+                None => Download::Failed(status.as_u16()),
+            });
         }
         let mut buf = Vec::new();
         const LIMIT: usize = 32 * 1024 * 1024;
@@ -200,7 +221,7 @@ impl QualtricsClient {
                 }
             }
         }
-        Ok(buf)
+        Ok(Download::Body(buf))
     }
 
     /// Collect `result.elements` across every page, following the absolute
@@ -328,6 +349,49 @@ impl QualtricsClient {
         })
     }
 
+}
+
+enum Download {
+    Body(Vec<u8>),
+    Retry { host: String, status: u16 },
+    Failed(u16),
+}
+
+/// A download error is at most 4 KiB of JSON. The buffer is wiped. Only a GRP_1 host is kept.
+async fn download_error_host(resp: &mut reqwest::Response) -> Option<String> {
+    let mut raw = Vec::new();
+    while raw.len() < 4096 {
+        match resp.chunk().await {
+            Ok(Some(chunk)) => {
+                let room = 4096 - raw.len();
+                let take = chunk.len().min(room);
+                raw.extend_from_slice(&chunk[..take]);
+                if chunk.len() > room {
+                    break;
+                }
+            }
+            _ => break,
+        }
+    }
+    let host = grp1_host_from_bytes(&raw);
+    raw.fill(0);
+    host
+}
+
+fn grp1_host_from_bytes(raw: &[u8]) -> Option<String> {
+    let value: Value = serde_json::from_slice(raw).ok()?;
+    let code = value
+        .pointer("/meta/error/errorCode")
+        .and_then(Value::as_str)
+        .and_then(machine_code)?;
+    if code != "GRP_1" {
+        return None;
+    }
+    qualtrics_host(
+        value
+            .pointer("/meta/error/errorMessage")
+            .and_then(Value::as_str),
+    )
 }
 
 /// Host named by a proxy notice or a GRP_1 sentence. The rest of the text is dropped.
@@ -464,6 +528,15 @@ mod tests {
             qualtrics_host(Some("datacenter the API user belongs to: SV_example")),
             None
         );
+        let body = format!(
+            r#"{{"meta":{{"error":{{"errorCode":"GRP_1","errorMessage":"{sentence}"}}}}}}"#
+        );
+        assert_eq!(
+            grp1_host_from_bytes(body.as_bytes()).as_deref(),
+            Some("co1.qualtrics.com")
+        );
+        let leaked = br#"{"meta":{"error":{"errorCode":"GRP_1","errorMessage":"datacenter the API user belongs to: ada@example.com"}}}"#;
+        assert_eq!(grp1_host_from_bytes(leaked), None);
     }
 
     #[test]
