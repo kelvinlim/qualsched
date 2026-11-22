@@ -1179,6 +1179,12 @@ def _step_export(job: _ExportJob, client: QualtricsClient, clock) -> Acquisition
     60 second proxy is not holding the file transfer plus another export.
     """
     if clock() > job.deadline:
+        if job.phase == "download" and job.file_id and job.index == 0:
+            outcome = _download_ready(job, client, job.survey_ids[0], True)
+            if isinstance(outcome, PendingExport):
+                job.copy_failed = True
+                return _report_from_job(job)
+            return outcome
         if job.index > 0:
             job.copy_failed = True
             return _report_from_job(job)
@@ -1344,7 +1350,9 @@ def acquisition_step(
         if (key, attempt) in _SUPERSEDED:
             raise export_failure("poll", detail="superseded")
         if current is not None and current.attempt == attempt and current.phase != "prepare":
-            if clock() > current.deadline:
+            if clock() > current.deadline and not (
+                current.phase == "download" and current.file_id and current.index == 0
+            ):
                 _JOBS.pop(key, None)
                 if current.index > 0:
                     current.copy_failed = True

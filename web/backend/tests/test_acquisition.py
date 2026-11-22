@@ -1311,6 +1311,42 @@ def test_older_attempt_cannot_replace_the_export_a_newer_attempt_owns():
     assert posts["n"] == 2
 
 
+def test_deadline_still_downloads_a_primary_file_that_is_already_ready():
+    fake = FakeQualtrics(
+        _zip(
+            [
+                _response(
+                    "R1",
+                    finished=1,
+                    status=0,
+                    RecipientID="CID_ada",
+                    endDate="2026-07-14T13:30:00Z",
+                )
+            ]
+        )
+    )
+    fake.add(_contact())
+    account, profile = _account_profile()
+    clock = {"t": 0, "slices": 0}
+
+    def pause(_seconds: float) -> None:
+        clock["slices"] += 1
+        clock["t"] = EXPORT_DEADLINE_S + 1
+
+    report = load_report(
+        fake,
+        account,
+        profile,
+        now=NOW,
+        sleep=pause,
+        clock=lambda: clock["t"],
+        attempt="attempt-ready-file",
+        user_id=1,
+    )
+    assert report.rows[0].displayName == "Ada Lovelace"
+    assert any(call[0] == "get_bytes" for call in fake.calls)
+
+
 def test_deadline_keeps_primary_counts_when_a_copy_is_still_running():
     fake = FakeQualtrics(
         _zip(
