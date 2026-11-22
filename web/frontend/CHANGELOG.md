@@ -5,6 +5,7 @@ All notable changes to QualSched Web are documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- Acquisition loading no longer restarts on every tick. The screen's load effect was reading the operation counter it incremented, so Svelte aborted the request and reset the elapsed timer to 0:00. A request that does not answer, or that stays pending past the poll budget, now shows a banner instead of spinning.
 - Acquisition no longer holds one browser request open while Qualtrics builds the response file. Each request performs one progress check. The proxy in front of the app stops at 60 seconds, which cut off a slow export before. A failure now names the stage, the HTTP status, and a machine error code, without the Qualtrics sentence.
 - Loading buttons and status lines show an indeterminate spinner and a cumulative elapsed time. The time starts with the operation, keeps running through retries, and resets when a new operation starts.
 - Acquisition no longer fails with "Qualtrics response export failed (HTTP 400)"

@@ -1340,7 +1340,8 @@ def acquisition_step(
     The web route calls this once per browser request. A Qualtrics export that
     is still ``inProgress`` is remembered in this process only, keyed by the
     user and profile, and the next request with the same attempt continues it.
-    A new attempt drops that memory. Nothing is written to disk.
+    A new attempt drops that memory. Nothing is written to disk. The process
+    is one uvicorn worker; a second worker would not see this memory.
     """
     key = (user_id, account.id, profile.id)
     moment = now or datetime.now(UTC)
