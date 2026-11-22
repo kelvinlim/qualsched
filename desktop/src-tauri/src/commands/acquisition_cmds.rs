@@ -27,6 +27,7 @@ pub async fn get_acquisition(
     state: State<'_, AppState>,
     account_id: Uuid,
     project_id: Uuid,
+    attempt: Option<String>,
 ) -> AppResult<AcquisitionReport> {
     let (account, project) = {
         let cfg = state.config().await;
@@ -42,8 +43,12 @@ pub async fn get_acquisition(
         return Err(AppError::Invalid("this project has no survey selected".into()));
     }
     let client = state.client(account_id).await?;
-    let on_status = |status: &str| {
-        let _ = window.emit("acquisition://status", json!({ "status": status }));
+    let attempt = attempt.unwrap_or_default();
+    let on_status = move |status: &str| {
+        let _ = window.emit(
+            "acquisition://status",
+            json!({ "status": status, "attempt": attempt }),
+        );
     };
     load_report(&client, &account, &project, Utc::now(), &on_status).await
 }

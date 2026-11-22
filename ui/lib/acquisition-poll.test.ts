@@ -1,4 +1,10 @@
-import { acquisitionStatus, followAcquisition } from "./acquisition-poll.ts";
+import {
+  ACQUISITION_MAX_SLICES,
+  ACQUISITION_PAUSE_MS,
+  acquisitionEventStatus,
+  acquisitionStatus,
+  followAcquisition,
+} from "./acquisition-poll.ts";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -156,6 +162,23 @@ if (acquisitionStatus("Exporting survey 1 of 3") !== "Exporting survey 1 of 3") 
 }
 if (acquisitionStatus("Exporting survey SV_1 of 3") !== null) {
   throw new Error("a survey id must not be shown");
+}
+
+const clientBudgetMs = (ACQUISITION_MAX_SLICES - 1) * ACQUISITION_PAUSE_MS;
+if (clientBudgetMs < 12 * 60 * 1000) {
+  throw new Error("the page gives up before a slow export can finish on the server");
+}
+
+const mine = acquisitionEventStatus(
+  { status: "Loading contacts", attempt: "attempt-a" },
+  "attempt-a",
+);
+const other = acquisitionEventStatus(
+  { status: "Exporting survey 2 of 3", attempt: "attempt-b" },
+  "attempt-a",
+);
+if (mine !== "Loading contacts" || other !== null) {
+  throw new Error("a status event from another load must be ignored");
 }
 
 console.log("acquisition poll tests ok");

@@ -1512,3 +1512,35 @@ def test_acquisition_get_returns_before_qualtrics_answers(ctx, monkeypatch):
     assert done.status_code == 200, done.text
     assert done.json()["rows"][0]["displayName"] == "Ada Lovelace"
     assert EMAIL not in done.text
+
+
+def test_cancelled_listing_does_not_ask_for_invitations_or_an_export():
+    fake = FakeQualtrics(_zip([]))
+    fake.add(_contact())
+    seen: list[str] = []
+    stop = {"now": False}
+
+    def get_elements(path: str, timeout: float | None = None):
+        seen.append(path)
+        if "contacts" in path:
+            stop["now"] = True
+        return FakeQualtrics.get_elements(fake, path, timeout)
+
+    fake.get_elements = get_elements
+    account, profile = _account_profile()
+    try:
+        load_report(
+            fake,
+            account,
+            profile,
+            now=NOW,
+            sleep=lambda _seconds: None,
+            stop=lambda: stop["now"],
+        )
+    except QualtricsError as exc:
+        assert exc.message == "Qualtrics response export failed at poll (superseded)."
+    else:
+        raise AssertionError("a cancelled listing must stop")
+    assert any("contacts" in path for path in seen)
+    assert not any(path.startswith("distributions") for path in seen)
+    assert not any(call[0] == "post" for call in fake.calls)

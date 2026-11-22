@@ -931,6 +931,14 @@ _STATUS_PROGRESS = re.compile(
     r"([1-9]\d{0,2}) of ([1-9]\d{0,2})$"
 )
 _STATUS_CB: contextvars.ContextVar = contextvars.ContextVar("acquisition_status", default=None)
+_CANCEL_CB: contextvars.ContextVar = contextvars.ContextVar("acquisition_cancel", default=None)
+
+
+def _stop_if_requested() -> None:
+    """A newer attempt should not start the next Qualtrics call."""
+    callback = _CANCEL_CB.get()
+    if callback is not None and callback():
+        raise export_failure("poll", detail="superseded")
 
 
 def status_text(value: object) -> str | None:
@@ -1378,8 +1386,10 @@ def _step_export(job: _ExportJob, client: QualtricsClient, clock) -> Acquisition
     survey_id = job.survey_ids[job.index]
     primary = survey_id == job.primary
     if job.phase == "download":
+        _stop_if_requested()
         return _download_ready(job, client, survey_id, primary)
     if job.phase == "create":
+        _stop_if_requested()
         try:
             progress, used = _start_export(client, survey_id)
         except QualtricsError as exc:
@@ -1394,6 +1404,7 @@ def _step_export(job: _ExportJob, client: QualtricsClient, clock) -> Acquisition
         waiting = _survey_label("Waiting for export", current, total)
         if waiting:
             _note(waiting, "poll")
+    _stop_if_requested()
     try:
         file_id = _poll_once(client, survey_id, job.progress_id or "")
     except QualtricsError as exc:
@@ -1434,10 +1445,12 @@ def _new_job(
 ) -> _ExportJob:
     directory = account.default_directory
     mailing_list = profile.mailing_list_id
+    _stop_if_requested()
     _note("Loading contacts", "start")
     raw_contacts = list_raw(client, directory, mailing_list, timeout=LIST_TIMEOUT_S)
     participants: list[Participant] = []
     for raw in raw_contacts:
+        _stop_if_requested()
         contact_id = contact_id_of(raw) or ""
         if not contact_id:
             continue
@@ -1464,6 +1477,7 @@ def _new_job(
             )
         )
 
+    _stop_if_requested()
     _note("Contacts loaded", "start")
     _note("Loading invitations", "start")
     invitations: list[Invitation] = []
@@ -1480,6 +1494,7 @@ def _new_job(
         for path in paths:
             # An email-only survey can 404 the SMS collection. That must not hide
             # the email invitations. A missing primary survey still fails the email list.
+            _stop_if_requested()
             sms = path.startswith("distributions/sms")
             try:
                 elements = client.get_elements(path, timeout=LIST_TIMEOUT_S)
@@ -1637,9 +1652,39 @@ def load_report(
 ) -> AcquisitionReport:
     """Fetch contacts, listed invitations, and response exports. Nothing is written."""
     token = attempt or f"direct-{time.monotonic_ns()}"
+    cancel_token = _CANCEL_CB.set(stop)
+    try:
+        return _load_report_body(
+            client,
+            account,
+            profile,
+            token=token,
+            now=now,
+            sleep=sleep,
+            user_id=user_id,
+            clock=clock,
+            poll_limit_survey=poll_limit_survey,
+            poll_limit_total=poll_limit_total,
+        )
+    finally:
+        _CANCEL_CB.reset(cancel_token)
+
+
+def _load_report_body(
+    client,
+    account,
+    profile,
+    *,
+    token: str,
+    now,
+    sleep,
+    user_id: int,
+    clock,
+    poll_limit_survey: int,
+    poll_limit_total: int,
+) -> AcquisitionReport:
     while True:
-        if stop is not None and stop():
-            raise export_failure("poll", detail="superseded")
+        _stop_if_requested()
         outcome = acquisition_step(
             client,
             account,

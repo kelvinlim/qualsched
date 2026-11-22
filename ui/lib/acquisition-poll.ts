@@ -1,7 +1,10 @@
 /** Browser-side follow-up for an acquisition export. One slice must finish or fail. */
 
 export const ACQUISITION_SLICE_MS = 50_000;
-export const ACQUISITION_MAX_SLICES = 240;
+/** Status reads return immediately, so this is a wall-clock budget.
+ * 600 pauses of 1.5s is 15 minutes. That outlasts contact listing plus the
+ * server's 8-minute export deadline, so the page does not abandon a live export. */
+export const ACQUISITION_MAX_SLICES = 600;
 export const ACQUISITION_PAUSE_MS = 1_500;
 
 const PENDING_STAGES = new Set(["start", "poll", "download", "parse"]);
@@ -23,6 +26,14 @@ export function acquisitionStatus(value: unknown): string | null {
   if (typeof value !== "string") return null;
   if (STATUS_EXACT.has(value) || STATUS_PROGRESS.test(value)) return value;
   return null;
+}
+
+/** Desktop events share one channel. Only the attempt that owns this load is shown. */
+export function acquisitionEventStatus(payload: unknown, attempt: string): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const row = payload as { status?: unknown; attempt?: unknown };
+  if (row.attempt !== attempt) return null;
+  return acquisitionStatus(row.status);
 }
 
 export interface AcquisitionPollError {
