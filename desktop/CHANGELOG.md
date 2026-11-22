@@ -5,6 +5,7 @@ All notable changes to QualSched are documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- Acquisition export follows the datacenter host Qualtrics names with error code GRP_1, or in a proxy notice, and retries that host once. The sentence itself is not kept.
 - Acquisition shows a short live status line while it loads: connecting, contacts, invitations, which survey is exporting, download, and counting. The line is a fixed phrase. Names, addresses, and Qualtrics ids are not included. A refresh only shows phrases from that load.
 - Acquisition loading no longer restarts on every tick. The shared screen was aborting its own load and resetting the elapsed timer to 0:00.
 - Loading controls show an indeterminate spinner and a cumulative elapsed time. It starts with the operation, keeps running through that operation's steps, and resets only when a new operation starts.
