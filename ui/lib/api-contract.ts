@@ -88,7 +88,7 @@ export const getAcquisition: (
   definitive: true,
   prerequisite: "",
   limitations: [],
-  exportMode: "restricted",
+  exportMode: "columns",
   excluded: {
     preview: 0,
     test: 0,

@@ -4,6 +4,12 @@ All notable changes to QualSched Web are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Acquisition no longer fails with "Qualtrics response export failed (HTTP 400)"
+  when the survey has no embedded field named RecipientID. The export request
+  no longer guesses those field names, and a rejected filter falls through to
+  an unfiltered JSON export that is reduced to completion fields in memory.
+
 ### Added
 - **Acquisition** screen, shared with desktop: completed surveys versus invitations
   still listed. The browser receives aggregate counts only. Response exports stay

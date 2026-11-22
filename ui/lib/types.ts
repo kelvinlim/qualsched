@@ -248,7 +248,7 @@ export interface AcquisitionReport {
   definitive: boolean;
   prerequisite: string;
   limitations: string[];
-  exportMode: "restricted" | "embedded" | "metadata";
+  exportMode: "columns" | "metadata" | "no-answers" | "full";
   excluded: AcquisitionExcluded;
   rows: AcquisitionRow[];
 }

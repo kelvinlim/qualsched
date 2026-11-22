@@ -14,6 +14,7 @@ from app.acquisition import (
     AcquisitionParseError,
     Invitation,
     Participant,
+    _start_export,
     aggregate,
     export_request_bodies,
     extract_response,
@@ -117,22 +118,113 @@ def _embedded(**extra) -> dict[str, str]:
     return base
 
 
+# The 17 metadata ids Qualtrics documents for surveyMetadataIds.
+OFFICIAL_METADATA = {
+    "startDate",
+    "endDate",
+    "status",
+    "ipAddress",
+    "progress",
+    "duration",
+    "finished",
+    "recordedDate",
+    "_recordId",
+    "recipientLastName",
+    "recipientFirstName",
+    "recipientEmail",
+    "externalDataReference",
+    "locationLatitude",
+    "locationLongitude",
+    "distributionChannel",
+    "userLanguage",
+}
+JSON_FORBIDDEN = {
+    "includeDisplayOrder",
+    "useLabels",
+    "formatDecimalAsComma",
+    "seenUnansweredRecode",
+    "multiselectSeenUnansweredRecode",
+    "timeZone",
+    "newlineReplacement",
+    "breakoutSets",
+}
+
+
+def qualtrics_export_status(body: dict, *, survey_embedded: set[str] | None = None) -> int | None:
+    """Documented create-export rejections. None means the body is acceptable.
+
+    Unknown embeddedDataIds are HTTP 400 (invalid columns). JSON/NDJSON reject
+    the label/timezone/breakout parameters even when false. Empty questionIds
+    is allowed and means no answer columns.
+    """
+    embedded_fields = set() if survey_embedded is None else survey_embedded
+    if body.get("format") in {"json", "ndjson"} and JSON_FORBIDDEN.intersection(body):
+        return 400
+    if "embeddedDataIds" in body and any(name not in embedded_fields for name in body["embeddedDataIds"]):
+        return 400
+    if "questionIds" in body:
+        for qid in body["questionIds"]:
+            if not (isinstance(qid, str) and qid.startswith("QID") and qid[3:].isdigit()):
+                return 400
+    if "surveyMetadataIds" in body and any(item not in OFFICIAL_METADATA for item in body["surveyMetadataIds"]):
+        return 400
+    return None
+
+
 def test_export_request_omits_identity_and_answers():
     bodies = export_request_bodies()
-    assert [mode for mode, _ in bodies] == ["restricted", "embedded", "metadata"]
-    first = json.dumps(bodies[0][1])
-    assert "recipientEmail" not in first
-    assert "recipientFirstName" not in first
-    assert "ipAddress" not in first
-    assert "locationLatitude" not in first
-    assert "externalDataReference" not in first
-    assert bodies[0][1]["questionIds"] == []
-    assert bodies[0][1]["exportResponsesInProgress"] is False
-    assert "RecipientID" in bodies[0][1]["embeddedDataIds"]
+    assert [mode for mode, _ in bodies] == ["columns", "metadata", "no-answers", "full"]
+    first = bodies[0][1]
+    dumped = json.dumps(first)
+    assert "recipientEmail" not in dumped
+    assert "RecipientID" not in dumped
+    assert "embeddedDataIds" not in first
+    assert first["format"] == "json"
+    assert first["questionIds"] == []
+    assert bodies[-1][1] == {"format": "json", "compress": True}
     for _, body in bodies:
-        dumped = json.dumps(body)
-        assert "recipientEmail" not in dumped
-        assert "ipAddress" not in dumped
+        assert qualtrics_export_status(body, survey_embedded=set()) is None
+        assert "recipientEmail" not in json.dumps(body)
+        assert JSON_FORBIDDEN.isdisjoint(body)
+
+
+def test_guessed_embedded_ids_are_the_documented_400():
+    """The body this screen used to send is rejected when those names are not fields."""
+    previous = {
+        "format": "ndjson",
+        "compress": True,
+        "exportResponsesInProgress": False,
+        "surveyMetadataIds": ["finished", "recordedDate", "_recordId"],
+        "embeddedDataIds": ["RecipientID", "recipientId", "ContactID", "contactId", "Q_DL"],
+        "questionIds": [],
+    }
+    assert qualtrics_export_status(previous, survey_embedded={"TimeZone", "StartDate"}) == 400
+
+
+def test_json_export_envelope_is_parsed_and_answers_dropped():
+    """format=json is a zip of one JSON object, not ndjson lines."""
+    payload = {
+        "responses": [
+            _response(
+                "R_1",
+                finished=1,
+                status=0,
+                RecipientID="CID_ada",
+                endDate="2026-07-13T13:30:00Z",
+                QID1=SECRET_ANSWER,
+            )
+        ]
+    }
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as archive:
+        archive.writestr("EMA.json", json.dumps(payload))
+    facts = parse_export_bytes(bytearray(buf.getvalue()))
+    assert len(facts) == 1
+    assert facts[0].recipient_id == "CID_ada"
+    assert facts[0].finished is True
+    dumped = json.dumps(facts[0].__dict__, default=str)
+    assert SECRET_ANSWER not in dumped
+    assert EMAIL not in dumped
 
 
 def test_parser_keeps_completion_fields_only_and_errors_do_not_echo():
@@ -801,3 +893,102 @@ def test_sms_server_error_still_fails_the_report():
         assert exc.status == 500
     else:
         raise AssertionError("an SMS server error should fail the report")
+
+
+class _RejectingExport:
+    """Create-export double that applies one documented rejection at a time."""
+
+    def __init__(self, reject):
+        self.reject = reject
+        self.posts: list[dict] = []
+
+    def post(self, path: str, body: dict):
+        self.posts.append(body)
+        if path.endswith("export-responses") and self.reject(body):
+            raise QualtricsError(400, "Api", "rejected")
+        if path.endswith("export-responses"):
+            return {"result": {"progressId": "PROG1"}}
+        raise AssertionError(path)
+
+
+def test_fallback_reaches_unfiltered_json_when_every_filter_is_rejected():
+    """Production saw HTTP 400 because every previous body shared a rejected field."""
+
+    def reject(body: dict) -> bool:
+        if body.get("format") == "ndjson":
+            return True
+        if "embeddedDataIds" in body:
+            return True
+        if "surveyMetadataIds" in body:
+            return True
+        return body.get("questionIds") == []
+
+    client = _RejectingExport(reject)
+    progress, mode = _start_export(client, "SV_1")
+    assert progress == "PROG1"
+    assert mode == "full"
+    assert client.posts[-1] == {"format": "json", "compress": True}
+    assert len(client.posts) == 4
+    assert all("rejected" not in json.dumps(body) for body in client.posts)
+
+
+def test_filtered_json_is_used_when_only_guessed_embedded_ids_are_rejected():
+    def reject(body: dict) -> bool:
+        ids = body.get("embeddedDataIds") or []
+        return any(name not in {"TimeZone"} for name in ids)
+
+    client = _RejectingExport(reject)
+    _, mode = _start_export(client, "SV_1")
+    assert mode == "columns"
+    assert "embeddedDataIds" not in client.posts[0]
+    assert client.posts[0]["questionIds"] == []
+
+
+def test_copy_survey_http_400_does_not_hide_the_profile_survey():
+    account = QualtricsAccount(
+        id=AID,
+        owner_user_id=1,
+        name="UMN",
+        data_center="yul1",
+        verify_tls=True,
+        default_directory="POOL_abc",
+        library_id="GR_lib",
+    )
+    profile = SurveyProfile(
+        id=PID,
+        account_id=AID,
+        name="EMA",
+        survey_id="SV_1",
+        mailing_list_id="CG_list",
+        timezone="America/Chicago",
+        survey_copies=[{"id": "SV_copy", "name": "old"}],
+    )
+    fake = FakeQualtrics(
+        _zip(
+            [
+                _response(
+                    "R1",
+                    finished=1,
+                    status=0,
+                    RecipientID="CID_ada",
+                    endDate="2026-07-14T13:30:00Z",
+                )
+            ]
+        )
+    )
+    fake.add(_contact())
+
+    def post(path: str, body: dict):
+        fake.calls.append(("post", path, body))
+        if "SV_copy" in path:
+            raise QualtricsError(400, "Api", "copy export rejected")
+        if path.endswith("export-responses"):
+            return {"result": {"progressId": "PROG1"}}
+        raise AssertionError(path)
+
+    fake.post = post
+    report = load_report(fake, account, profile, now=NOW, sleep=lambda _s: None)
+    assert report.rows[0].displayName == "Ada Lovelace"
+    assert any("leftover survey copy" in item for item in report.limitations)
+    assert "copy export rejected" not in report.model_dump_json()
+    assert SECRET_ANSWER not in report.model_dump_json()
