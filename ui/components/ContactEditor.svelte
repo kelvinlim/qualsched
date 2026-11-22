@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ContactView } from "../lib/types";
+  import BusyMark from "./BusyMark.svelte";
 
   /** Identity fields, matching CORE_FIELDS in the Rust contacts module. */
   const CORE = [
@@ -38,6 +39,15 @@
   const isNew = $derived(contact === null);
 
   let core = $state<Record<string, string>>({});
+  let saveOp = $state(0);
+  let saveArmed = false;
+  $effect(() => {
+    if (busy && !saveArmed) {
+      saveArmed = true;
+      saveOp += 1;
+    }
+    if (!busy) saveArmed = false;
+  });
   let embedded = $state<Record<string, string>>({});
 
   // Reset the form whenever a different participant (or "new") is opened.
@@ -148,7 +158,11 @@
   <div class="row end" style="margin-top: 0.5rem;">
     <button onclick={oncancel} disabled={busy}>Cancel</button>
     <button class="primary" onclick={submit} disabled={busy || identityMissing}>
-      {busy ? "Saving…" : isNew ? "Add to mailing list" : "Save to Qualtrics"}
+      {#if busy}
+        <BusyMark operation={`contact-${saveOp}`} label="Saving" />
+      {:else}
+        {isNew ? "Add to mailing list" : "Save to Qualtrics"}
+      {/if}
     </button>
   </div>
 </div>

@@ -3,6 +3,7 @@
   import { matchesQuery } from "../lib/filter";
   import { app } from "../lib/state.svelte";
   import { errorMessage, type DistributionRow, type Method } from "../lib/types";
+  import BusyMark from "../components/BusyMark.svelte";
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
 
   let method = $state<Method>("sms");
@@ -13,7 +14,9 @@
   let error = $state("");
   let notice = $state("");
   let loading = $state(false);
+  let loadOp = $state(0);
   let deleting = $state(false);
+  let deleteOp = $state(0);
   let confirmDelete = $state(false);
   let progress = $state({ done: 0, total: 0 });
 
@@ -28,6 +31,7 @@
 
   async function load() {
     if (!app.account || !app.project) return;
+    loadOp += 1;
     loading = true;
     error = "";
     try {
@@ -42,6 +46,7 @@
 
   async function remove() {
     if (!app.account || !app.project || selectedRows.length === 0) return;
+    deleteOp += 1;
     deleting = true;
     error = "";
     notice = "";
@@ -122,7 +127,13 @@
       <option value="email">Email</option>
     </select>
   </div>
-  <button onclick={load} disabled={loading}>{loading ? "Loading…" : "Load"}</button>
+  <button onclick={load} disabled={loading}>
+    {#if loading}
+      <BusyMark operation={`distributions-${loadOp}`} label="Loading" />
+    {:else}
+      Load
+    {/if}
+  </button>
   <div class="checkbox" style="margin: 0;">
     <input id="dist-unsent" type="checkbox" bind:checked={unsentOnly} />
     <label for="dist-unsent">Not yet sent only</label>
@@ -155,7 +166,10 @@
 
 {#if deleting}
   <div class="card">
-    <p>Cancelling {progress.done} of {progress.total}…</p>
+    <p>
+      <BusyMark operation={`distributions-delete-${deleteOp}`} label="Cancelling" />
+      {progress.done} of {progress.total}
+    </p>
     <progress value={progress.done} max={progress.total || 1}></progress>
   </div>
 {/if}

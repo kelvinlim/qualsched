@@ -4,6 +4,7 @@
   import { app, newAccount } from "../lib/state.svelte";
   import { errorMessage, type Account } from "../lib/types";
   import ApiDropdown from "../components/ApiDropdown.svelte";
+  import BusyMark from "../components/BusyMark.svelte";
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
 
   let draft = $state<Account | null>(null);
@@ -12,6 +13,7 @@
   let error = $state("");
   let notice = $state("");
   let busy = $state(false);
+  let busyOp = $state(0);
   let confirmDelete = $state(false);
 
   // Reload the form whenever the selected account changes.
@@ -39,6 +41,7 @@
 
   async function save() {
     if (!draft) return;
+    busyOp += 1;
     busy = true;
     error = "";
     notice = "";
@@ -61,6 +64,7 @@
 
   async function test() {
     if (!draft) return;
+    busyOp += 1;
     busy = true;
     error = "";
     notice = "";
@@ -76,6 +80,7 @@
 
   async function removeAccount() {
     if (!draft) return;
+    busyOp += 1;
     busy = true;
     error = "";
     try {
@@ -213,6 +218,9 @@
       <div class="row">
         <button class="primary" onclick={save} disabled={busy}>Save</button>
         <button onclick={test} disabled={busy}>Test connection</button>
+        {#if busy}
+          <BusyMark operation={`account-${busyOp}`} label="Working" />
+        {/if}
         <span class="spacer"></span>
         <button class="danger" onclick={() => (confirmDelete = true)} disabled={busy}>
           Delete account

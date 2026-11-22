@@ -7,6 +7,10 @@ use crate::error::{AppError, AppResult};
 /// Qualtrics throttles bursts; a small gap between writes keeps large batches under the limit.
 pub const WRITE_PACING: Duration = Duration::from_millis(120);
 
+/// Desktop has no 60-second proxy in front of the download. The body is still
+/// capped at 32 MiB; this deadline is only the socket timeout.
+pub const EXPORT_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(300);
+
 pub struct QualtricsClient {
     http: reqwest::Client,
     data_center: String,
@@ -111,11 +115,11 @@ impl QualtricsClient {
     /// Binary download. The error text is only the HTTP status — export files can
     /// contain participant data and must not be copied into an error or a log.
     pub async fn get_bytes(&self, path: &str) -> AppResult<Vec<u8>> {
-        let resp = self
+        let mut resp = self
             .prepare(
                 self.http
                     .get(self.url(path))
-                    .timeout(Duration::from_secs(300)),
+                    .timeout(EXPORT_DOWNLOAD_TIMEOUT),
             )
             .send()
             .await?;
@@ -129,11 +133,33 @@ impl QualtricsClient {
         if !status.is_success() {
             let _ = resp.bytes().await;
             return Err(AppError::Api(format!(
-                "Qualtrics response export failed (HTTP {})",
+                "Qualtrics response export failed at download (HTTP {}).",
                 status.as_u16()
             )));
         }
-        Ok(resp.bytes().await?.to_vec())
+        let mut buf = Vec::new();
+        const LIMIT: usize = 32 * 1024 * 1024;
+        loop {
+            match resp.chunk().await {
+                Ok(Some(chunk)) => {
+                    if buf.len().saturating_add(chunk.len()) > LIMIT {
+                        buf.fill(0);
+                        return Err(AppError::Api(
+                            "Qualtrics response export failed at download (file too large).".into(),
+                        ));
+                    }
+                    buf.extend_from_slice(&chunk);
+                }
+                Ok(None) => break,
+                Err(_) => {
+                    buf.fill(0);
+                    return Err(AppError::Api(
+                        "Qualtrics response export failed at download (timeout).".into(),
+                    ));
+                }
+            }
+        }
+        Ok(buf)
     }
 
     /// Collect `result.elements` across every page, following the absolute
@@ -157,6 +183,80 @@ impl QualtricsClient {
         Ok(out)
     }
 
+    /// JSON call for response export. The error carries only an HTTP status and,
+    /// when Qualtrics sent one, a machine `errorCode`. The error sentence is dropped.
+    pub async fn export_json(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<&Value>,
+    ) -> Result<Value, RemoteReject> {
+        let mut req = self.http.request(method, self.url(path));
+        if let Some(body) = body {
+            req = req.json(body);
+        }
+        let resp = match self.prepare(req).send().await {
+            Ok(resp) => resp,
+            Err(_) => return Err(RemoteReject { status: 504, code: None }),
+        };
+        let status = resp.status().as_u16();
+        let text = match resp.text().await {
+            Ok(text) => text,
+            Err(_) => return Err(RemoteReject { status: 502, code: None }),
+        };
+        if status == 401 || status == 403 {
+            return Err(RemoteReject { status: 401, code: None });
+        }
+        if status == 429 {
+            return Err(RemoteReject { status: 429, code: None });
+        }
+        let parsed: Value = match serde_json::from_str(&text) {
+            Ok(value) => value,
+            Err(_) => {
+                return Err(RemoteReject {
+                    status: if status >= 400 { status } else { 502 },
+                    code: None,
+                });
+            }
+        };
+        let http_status = parsed
+            .pointer("/meta/httpStatus")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let code = parsed
+            .pointer("/meta/error/errorCode")
+            .and_then(Value::as_str)
+            .and_then(machine_code);
+        if (200..300).contains(&status) && (http_status.is_empty() || http_status.starts_with("200"))
+        {
+            return Ok(parsed);
+        }
+        Err(RemoteReject {
+            status: if status >= 400 { status } else { 502 },
+            code,
+        })
+    }
+
+}
+
+/// Qualtrics machine codes such as `RTE_2`. Sentences, column names, and ids do not match.
+pub fn machine_code(value: &str) -> Option<String> {
+    if (1..=32).contains(&value.len())
+        && value.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+        && value
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+    {
+        Some(value.to_string())
+    } else {
+        None
+    }
+}
+
+#[derive(Debug)]
+pub struct RemoteReject {
+    pub status: u16,
+    pub code: Option<String>,
 }
 
 fn truncate(s: &str, n: usize) -> String {
@@ -175,6 +275,11 @@ mod tests {
 
     fn client() -> QualtricsClient {
         QualtricsClient::new("yul1", "token", true).unwrap()
+    }
+
+    #[test]
+    fn export_download_keeps_the_long_desktop_timeout() {
+        assert_eq!(EXPORT_DOWNLOAD_TIMEOUT, Duration::from_secs(300));
     }
 
     // A second Content-Type header made Qualtrics reject every write.

@@ -6,13 +6,16 @@
     type SchedulePreview,
     type SendReport,
   } from "../lib/types";
+  import BusyMark from "../components/BusyMark.svelte";
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
 
   let preview = $state<SchedulePreview | null>(null);
   let report = $state<SendReport | null>(null);
   let error = $state("");
   let computing = $state(false);
+  let computeOp = $state(0);
   let sending = $state(false);
+  let sendOp = $state(0);
   let confirmSend = $state(false);
   let progress = $state({ done: 0, total: 0 });
 
@@ -26,6 +29,7 @@
 
   async function compute() {
     if (!app.account || !app.project) return;
+    computeOp += 1;
     computing = true;
     error = "";
     report = null;
@@ -41,6 +45,7 @@
 
   async function send() {
     if (!app.account || !app.project || !preview) return;
+    sendOp += 1;
     sending = true;
     error = "";
     report = null;
@@ -80,7 +85,11 @@
 
 <div class="row" style="margin-bottom: 1rem;">
   <button class="primary" onclick={compute} disabled={computing || sending}>
-    {computing ? "Working…" : "Compute plan"}
+    {#if computing}
+      <BusyMark operation={`plan-${computeOp}`} label="Working" />
+    {:else}
+      Compute plan
+    {/if}
   </button>
   {#if preview && preview.items.length > 0}
     <button onclick={() => (confirmSend = true)} disabled={sending}>
@@ -91,7 +100,10 @@
 
 {#if sending}
   <div class="card">
-    <p>Scheduling {progress.done} of {progress.total}…</p>
+    <p>
+      <BusyMark operation={`send-${sendOp}`} label="Scheduling" />
+      {progress.done} of {progress.total}
+    </p>
     <progress value={progress.done} max={progress.total || 1}></progress>
   </div>
 {/if}

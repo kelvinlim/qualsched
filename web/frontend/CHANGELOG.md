@@ -5,6 +5,8 @@ All notable changes to QualSched Web are documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- Acquisition no longer holds one browser request open while Qualtrics builds the response file. Each request performs one progress check. The proxy in front of the app stops at 60 seconds, which cut off a slow export before. A failure now names the stage, the HTTP status, and a machine error code, without the Qualtrics sentence.
+- Loading buttons and status lines show an indeterminate spinner and a cumulative elapsed time. The time starts with the operation, keeps running through retries, and resets when a new operation starts.
 - Acquisition no longer fails with "Qualtrics response export failed (HTTP 400)"
   when the survey has no embedded field named RecipientID. The export request
   no longer guesses those field names, and a rejected filter falls through to

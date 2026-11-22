@@ -79,6 +79,8 @@ NDJSON exports are not sent `useLabels`, `breakoutSets`, `timeZone`, or the
 other parameters the Start Response Export page says are rejected even when
 false. Answers, if a broader file is required, are discarded while parsing.
 
+Each browser request does one slice. Qualtrics export progress is asynchronous, and the web proxy stops reading after 60 seconds, so a single request that polled until `complete` could not finish a slow export. The page repeats a short request with the same attempt until the export reports `status: complete` or a bound is reached. A new attempt, including switching profile, drops the in-memory slice. Desktop polls inside one command with the same bounds. A failure says which stage it reached (`start`, `poll`, `download`, `parse`), the HTTP status when the HTTP call itself failed, and a Qualtrics machine `errorCode` when that code matches a short token such as `RTE_2`. The Qualtrics sentence, column names, and file bytes are not included.
+
 The first body requests those metadata columns and `questionIds: []`. Names,
 email, IP, location, and external reference are not in that list. A broader file,
 when the filter is rejected, is read **in memory**, reduced to the completion

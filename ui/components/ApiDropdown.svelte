@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BusyMark from "./BusyMark.svelte";
   import { sortQualtricsOptions } from "../lib/option-sort";
   import { errorMessage } from "../lib/types";
 
@@ -27,10 +28,13 @@
 
   let options = $state<Option[]>([]);
   let loading = $state(false);
+  let loadOp = $state(0);
+  const markId = Math.random().toString(36).slice(2);
   let error = $state("");
   let loaded = $state(false);
 
   async function load(force = false) {
+    loadOp += 1;
     loading = true;
     error = "";
     try {
@@ -59,7 +63,11 @@
       onclick={() => load(true)}
       disabled={disabled || loading}
     >
-      {loading ? "Loading…" : loaded ? "Refresh" : "Load from Qualtrics"}
+      {#if loading}
+        <BusyMark operation={`${markId}-${loadOp}`} label="Loading" />
+      {:else}
+        {loaded ? "Refresh" : "Load from Qualtrics"}
+      {/if}
     </button>
   </div>
 
