@@ -28,6 +28,7 @@ you do not need to understand how Qualtrics works underneath.
   - [Three things to check before your first send](#three-things-to-check-before-your-first-send)
   - [Do a rehearsal first](#do-a-rehearsal-first)
 - [Everyday use: sending invitations](#everyday-use-sending-invitations)
+- [Acquisition](#acquisition)
 - [Common tasks](#common-tasks)
 - [Reference: the scheduling fields](#reference-the-scheduling-fields)
 - [Troubleshooting](#troubleshooting)
@@ -604,6 +605,35 @@ delivered. Anything still `scheduled` can be cancelled: tick the rows and press 
 selected**. Rows hidden by the search or by "Not yet sent only" are never cancelled, even
 if you ticked them earlier — the number on the button is always the number that goes, and
 QualSched tells you when a filter is hiding something you had ticked.
+
+---
+
+# Acquisition
+
+Open **Acquisition** after invitations have been booked. Each row is one participant.
+The seven blocks are that person's last seven local days, and **Entire study** shows
+the rest. The number in a block is how many surveys were completed that day. The
+count beside the row is completed/expected for the days you are looking at.
+
+A day is not colored from the invitation alone. QualSched downloads the survey's
+response export, keeps only completion fields in memory, and counts a response when
+it is finished and its recipient id is exactly that person's Qualtrics contact id.
+Previews, tests, synthetic responses, and responses with no recipient id are left
+out. If a response cannot be tied to one invitation, it is not added to a day, and
+the count says "at least" so a missing match is not presented as a zero.
+
+Expected counts are the invitations Qualtrics still lists, on the participant's own
+clock. The scheduler is not run again, so a changed or random send time stays where
+it was booked. Prompts later today are not yet in the denominator. A day with no
+invitation is not the same as a day where every prompt was missed, and a day outside
+the study is not the same as either of those.
+
+**Active** and **Inactive** are a display flag stored on the contact as `QsMonitor`.
+Inactive hides the row when **Active only** is ticked. It does not cancel invitations,
+delete responses, or change whether Schedule will send to that person. The flag is
+the same field on desktop and on the web, because it lives in Qualtrics rather than
+in a file on the computer. Desktop does not save the heatmap, the responses, or the
+participant list for this screen.
 
 ---
 

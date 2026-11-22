@@ -585,3 +585,119 @@ progress {
 .guide img {
   display: none;
 }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.acquisition .meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.heats {
+  display: flex;
+  gap: 0.2rem;
+  align-items: center;
+}
+
+.heats.study {
+  overflow-x: auto;
+  max-width: 36rem;
+  padding-bottom: 0.15rem;
+}
+
+.heat {
+  position: relative;
+  width: 1.45rem;
+  height: 1.45rem;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.heat .fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--ok);
+  opacity: 0.85;
+}
+
+.heat .glyph {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 0.68rem;
+  font-weight: 650;
+}
+
+.heat-0 {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+.heat-0 .fill { height: 0; }
+.heat-1 .fill { height: 25%; }
+.heat-2 .fill { height: 50%; }
+.heat-3 .fill { height: 75%; }
+.heat-4 .fill { height: 100%; }
+.heat-future {
+  border-style: dashed;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 2px,
+    var(--border) 2px,
+    var(--border) 3px
+  );
+}
+.heat-none {
+  background: var(--bg);
+}
+.heat-nonStudy {
+  border-style: dotted;
+  opacity: 0.45;
+}
+.heat-unknown {
+  border-style: double;
+  background: var(--warn-soft);
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.segmented button {
+  border: 0;
+  border-radius: 0;
+  background: var(--panel);
+}
+.segmented button.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.note {
+  color: var(--muted);
+  margin: 0.35rem 0;
+}

@@ -2,6 +2,14 @@
 
 All notable changes to QualSched are documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Acquisition** screen: per-participant daily blocks of completed surveys versus
+  invitations still listed in Qualtrics. Counts use finished responses with an exact
+  contact id, not the fact that an invitation was sent. Active/inactive is a display
+  flag only.
+
 ## [0.2.3] - 2026-08-30
 
 ### Added

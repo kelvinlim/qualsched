@@ -1,3 +1,4 @@
+mod acquisition;
 mod commands;
 mod config;
 mod error;
@@ -63,6 +64,8 @@ pub fn run() {
             commands::lookup_cmds::list_messages,
             commands::lookup_cmds::get_message_text,
             commands::contact_cmds::get_contacts,
+            commands::acquisition_cmds::get_acquisition,
+            commands::acquisition_cmds::set_acquisition_status,
             commands::contact_cmds::create_contact,
             commands::contact_cmds::update_contact,
             commands::contact_cmds::delete_contact,

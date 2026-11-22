@@ -11,6 +11,7 @@
 
 import type {
   Account,
+  AcquisitionReport,
   AppConfig,
   ContactView,
   DeleteReport,
@@ -21,6 +22,7 @@ import type {
   MailingListInfo,
   MessageInfo,
   Method,
+  MonitorUpdate,
   Project,
   RemovedContact,
   ScheduleProgress,
@@ -168,6 +170,24 @@ export const getMessageText = (accountId: string, messageId: string) =>
   request<string>(`/api/accounts/${accountId}/messages/${encodeURIComponent(messageId)}/text`);
 
 // --- contacts (live Qualtrics mailing list; never stored) ---------------
+
+export const getAcquisition = (accountId: string, projectId: string) =>
+  request<AcquisitionReport>(
+    `/api/accounts/${accountId}/projects/${projectId}/acquisition`,
+    { cache: "no-store" },
+  );
+
+export const setAcquisitionStatus = (
+  accountId: string,
+  projectId: string,
+  contactId: string,
+  status: "active" | "inactive",
+) =>
+  json<MonitorUpdate>(
+    `/api/accounts/${accountId}/projects/${projectId}/acquisition/status`,
+    "PUT",
+    { contactId, status },
+  );
 
 export const getContacts = (accountId: string, projectId: string) =>
   request<ContactView[]>(`/api/accounts/${accountId}/projects/${projectId}/contacts`);

@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Last updated: 28 August 2026
+Last updated: 22 November 2026
 
 QualSched Web (“QualSched”) is a researcher tool for scheduling Qualtrics ecological
 momentary assessment (EMA) invitations. It is operated by Kelvin O. Lim at the
@@ -43,9 +43,14 @@ In the QualSched database we keep:
 
 We do **not** store:
 
-- Participant names, phone numbers, emails, time slots, time zones, or other contact
-  PHI. Those live in Qualtrics. QualSched proxies them for the signed-in researcher and
-  discards the payload after the response.
+- Participant names, phone numbers, emails, time slots, time zones, survey answers,
+  response ids, or other contact PHI. Those live in Qualtrics. QualSched proxies what
+  the signed-in researcher asks to see and discards the payload after the response.
+  The Acquisition screen is the same rule: the server downloads the response export
+  into memory, reduces it to completion counts, and returns only those counts plus
+  the display name already shown on Contacts. The response sets `Cache-Control:
+  no-store`. Survey answers are not returned and are not written to the database or
+  to a file.
 - Google access or refresh tokens
 
 ## Cookies

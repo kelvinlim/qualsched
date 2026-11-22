@@ -86,6 +86,31 @@ class QualtricsClient:
     def get(self, path: str) -> dict[str, Any]:
         return self._send(self._client.build_request("GET", self.url(path)))
 
+    def get_bytes(self, path: str) -> bytearray:
+        """Download a binary body into memory.
+
+        Failures do not include the response body. Qualtrics export files can
+        contain participant data, and that text must not land in an error string
+        or a log line. The returned buffer is a ``bytearray`` so the caller can
+        overwrite it after parsing. This does not cover copies the HTTP stack
+        already made, or memory the OS has paged out.
+        """
+        resp = self._client.send(self._client.build_request("GET", self.url(path)))
+        status = resp.status_code
+        if status in (401, 403):
+            raise QualtricsError(401, "Unauthorized", "Qualtrics rejected the API token.")
+        if status == 429:
+            raise QualtricsError(
+                429, "RateLimited", "Qualtrics rate-limited the request.", retryable=True
+            )
+        if not 200 <= status < 300:
+            raise QualtricsError(
+                status if status >= 400 else 502,
+                "Api",
+                f"Qualtrics response export failed (HTTP {status}).",
+            )
+        return bytearray(resp.content)
+
     def get_absolute(self, url: str) -> dict[str, Any]:
         return self._send(self._client.build_request("GET", url))
 
