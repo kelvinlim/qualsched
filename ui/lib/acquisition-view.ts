@@ -16,6 +16,21 @@ export type Heat =
   | "nonStudy"
   | "unknown";
 
+/** A status write may return after the researcher has switched account or profile. */
+export function statusPatchApplies(
+  currentAccountId: string | null,
+  currentProjectId: string | null,
+  startedAccountId: string,
+  startedProjectId: string,
+  reportPresent: boolean,
+): boolean {
+  return (
+    reportPresent &&
+    currentAccountId === startedAccountId &&
+    currentProjectId === startedProjectId
+  );
+}
+
 export function monitorStatus(raw: string | null | undefined): "active" | "inactive" {
   return (raw ?? "").trim().toLowerCase() === "inactive" ? "inactive" : "active";
 }

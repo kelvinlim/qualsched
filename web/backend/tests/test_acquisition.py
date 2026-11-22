@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 from app.acquisition import (
     DENOMINATOR_NOTE,
+    MAX_SPAN_DAYS,
     MONITOR_FIELD,
     PREREQUISITE,
     AcquisitionParseError,
@@ -457,6 +458,7 @@ class FakeQualtrics:
         self.contacts: list[dict] = []
         self.distributions: list[dict] = []
         self.calls: list[tuple] = []
+        self.sms_error: QualtricsError | None = None
 
     def __enter__(self):
         return self
@@ -473,6 +475,8 @@ class FakeQualtrics:
             # Email and SMS are different Qualtrics collections. Returning the same
             # rows for both would double-count invitations.
             if path.startswith("distributions/sms"):
+                if self.sms_error is not None:
+                    raise self.sms_error
                 return []
             return list(self.distributions)
         return list(self.contacts)
@@ -724,3 +728,76 @@ def test_set_monitor_unit_does_not_seed_schedule_fields():
     assert embedded[MONITOR_FIELD] == "inactive"
     assert "SurveysScheduled" not in embedded
     assert all(call[0] != "delete" for call in fake.calls)
+
+
+def test_huge_num_days_stays_bounded():
+    report = aggregate(
+        [_person(start_date="2020-01-01", num_days=10_000_000)],
+        [],
+        [],
+        now=NOW,
+        profile_timezone="America/Chicago",
+    )
+    assert len(report.rows[0].days) <= MAX_SPAN_DAYS + 14
+    assert any("370" in item for item in report.limitations)
+    assert any(day.date == "2026-07-15" for day in report.rows[0].days)
+
+
+def test_sms_not_found_keeps_email_invitations():
+    account = QualtricsAccount(
+        id=AID,
+        owner_user_id=1,
+        name="UMN",
+        data_center="yul1",
+        verify_tls=True,
+        default_directory="POOL_abc",
+        library_id="GR_lib",
+    )
+    profile = SurveyProfile(
+        id=PID,
+        account_id=AID,
+        name="EMA",
+        survey_id="SV_1",
+        mailing_list_id="CG_list",
+        timezone="America/Chicago",
+    )
+    fake = FakeQualtrics(_zip([]))
+    fake.add(_contact())
+    fake.sms_error = QualtricsError(404, "NotFound", "sms collection missing")
+    fake.distributions.append(
+        {
+            "id": "EMD_1",
+            "sendDate": "2026-07-14T13:00:00Z",
+            "surveyLink": {"expirationDate": "2026-07-14T14:00:00Z"},
+            "recipients": {"contactId": "CGC_ada"},
+        }
+    )
+    report = load_report(fake, account, profile, now=NOW, sleep=lambda _s: None)
+    day = next(item for item in report.rows[0].days if item.date == "2026-07-14")
+    assert day.expected == 1
+    assert any("SMS invitations could not be listed" in item for item in report.limitations)
+
+
+def test_sms_server_error_still_fails_the_report():
+    account = QualtricsAccount(
+        id=AID,
+        owner_user_id=1,
+        data_center="yul1",
+        default_directory="POOL_abc",
+    )
+    profile = SurveyProfile(
+        id=PID,
+        account_id=AID,
+        survey_id="SV_1",
+        mailing_list_id="CG_list",
+        timezone="America/Chicago",
+    )
+    fake = FakeQualtrics(_zip([]))
+    fake.add(_contact())
+    fake.sms_error = QualtricsError(500, "Api", "sms exploded")
+    try:
+        load_report(fake, account, profile, now=NOW, sleep=lambda _s: None)
+    except QualtricsError as exc:
+        assert exc.status == 500
+    else:
+        raise AssertionError("an SMS server error should fail the report")

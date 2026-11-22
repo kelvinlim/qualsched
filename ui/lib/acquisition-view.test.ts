@@ -8,6 +8,7 @@ import {
   heatOf,
   lastSeven,
   monitorStatus,
+  statusPatchApplies,
   summaryText,
   visibleRows,
   windowSummary,
@@ -119,6 +120,21 @@ assertEqual(rows.length, 2, "filter does not mutate the report");
 assertEqual(monitorStatus(undefined), "active", "missing flag stays active");
 assertEqual(monitorStatus("inactive"), "inactive", "explicit inactive");
 assertEqual(monitorStatus("ACTIVE"), "active", "only the word inactive hides a row");
+assertEqual(
+  statusPatchApplies("acct", "proj", "acct", "proj", true),
+  true,
+  "status write applies on the same account and profile",
+);
+assertEqual(
+  statusPatchApplies("acct", "other", "acct", "proj", true),
+  false,
+  "status write does not patch a different profile",
+);
+assertEqual(
+  statusPatchApplies("acct", "proj", "acct", "proj", false),
+  false,
+  "status write does not patch after the report was cleared",
+);
 
 const source = await import("node:fs/promises").then((fs) =>
   fs.readFile(new URL("./acquisition-view.ts", import.meta.url), "utf8"),

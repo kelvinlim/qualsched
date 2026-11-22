@@ -527,7 +527,13 @@ fn parse_start(raw: &str) -> Option<NaiveDate> {
     if text.is_empty() {
         return None;
     }
-    NaiveDate::parse_from_str(&text[..text.len().min(10)], "%Y-%m-%d").ok()
+    // Char indices, not bytes: a multibyte character on the boundary must not panic.
+    let end = text
+        .char_indices()
+        .nth(10)
+        .map(|(index, _)| index)
+        .unwrap_or(text.len());
+    NaiveDate::parse_from_str(&text[..end], "%Y-%m-%d").ok()
 }
 
 fn shift(day: NaiveDate, days: i64) -> NaiveDate {
@@ -558,6 +564,19 @@ fn link_distribution(token: Option<&str>, q_dl: Option<&str>, known: &HashSet<St
     Some(String::new())
 }
 
+/// `(first offset from start, how many days, whether NumDays was clamped)`.
+fn study_window(start: NaiveDate, num_days: i64, today: NaiveDate) -> (i64, i64, bool) {
+    if num_days <= MAX_SPAN_DAYS {
+        return (0, num_days, false);
+    }
+    let elapsed = today.signed_duration_since(start).num_days();
+    if elapsed < 0 {
+        return (0, MAX_SPAN_DAYS, true);
+    }
+    let offset0 = (elapsed - MAX_SPAN_DAYS + 8).clamp(0, num_days - MAX_SPAN_DAYS);
+    (offset0, MAX_SPAN_DAYS, true)
+}
+
 fn study_dates(
     start: Option<NaiveDate>,
     num_days: i64,
@@ -565,13 +584,20 @@ fn study_dates(
     admin_dates: &[NaiveDate],
 ) -> (Vec<NaiveDate>, bool) {
     let mut found = BTreeSet::new();
+    let mut truncated = false;
     for offset in 0..7 {
         found.insert(shift(today, offset - 6));
     }
     if let Some(start) = start {
         if num_days > 0 {
-            for offset in 0..num_days {
-                found.insert(shift(start, offset));
+            // Never walk a corrupt NumDays. Keep at most MAX_SPAN_DAYS of the
+            // study, preferring the portion that includes today.
+            let (offset0, count, clamped) = study_window(start, num_days, today);
+            if clamped {
+                truncated = true;
+            }
+            for offset in 0..count {
+                found.insert(shift(start, offset0 + offset));
             }
         }
     }
@@ -579,7 +605,6 @@ fn study_dates(
         found.insert(*day);
     }
     let mut ordered: Vec<_> = found.into_iter().collect();
-    let mut truncated = false;
     if let (Some(first), Some(last)) = (ordered.first().copied(), ordered.last().copied()) {
         if last.signed_duration_since(first).num_days() > MAX_SPAN_DAYS {
             let cutoff = shift(last, -MAX_SPAN_DAYS);
@@ -1380,5 +1405,32 @@ mod tests {
         assert_eq!(patch.get(MONITOR_FIELD).map(String::as_str), Some("inactive"));
         assert!(!patch.contains_key("SurveysScheduled"));
         assert!(monitor_updates("deleted").is_err());
+    }
+
+    #[test]
+    fn multibyte_start_date_does_not_panic() {
+        assert!(parse_start("ééééééééééé").is_none());
+        assert_eq!(
+            parse_start("2026-07-15 and more").unwrap(),
+            NaiveDate::from_ymd_opt(2026, 7, 15).unwrap()
+        );
+    }
+
+    #[test]
+    fn huge_num_days_stays_bounded() {
+        let mut participant = person();
+        participant.num_days = 10_000_000;
+        participant.start_date = "2020-01-01".into();
+        let report = aggregate(
+            &[participant],
+            &[],
+            &[],
+            now(),
+            "America/Chicago",
+            ExportMode::Restricted,
+        );
+        assert!(report.rows[0].days.len() <= (MAX_SPAN_DAYS as usize) + 14);
+        assert!(report.limitations.iter().any(|item| item.contains("370")));
+        assert!(report.rows[0].days.iter().any(|day| day.date == "2026-07-15"));
     }
 }

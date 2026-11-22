@@ -461,16 +461,33 @@ def _link_distribution(token: str | None, q_dl: str | None, known: set[str]) -> 
     return ""
 
 
+def _study_window(start: date, num_days: int, today: date) -> tuple[int, int, bool]:
+    """First offset from start, how many days to emit, and whether NumDays was clamped.
+
+    A corrupt NumDays must not allocate one date per day of that span.
+    """
+    if num_days <= MAX_SPAN_DAYS:
+        return 0, num_days, False
+    elapsed = (today - start).days
+    if elapsed < 0:
+        return 0, MAX_SPAN_DAYS, True
+    offset0 = min(max(elapsed - MAX_SPAN_DAYS + 8, 0), num_days - MAX_SPAN_DAYS)
+    return offset0, MAX_SPAN_DAYS, True
+
+
 def _study_dates(
     start: date | None, num_days: int, today: date, admin_dates: list[date]
 ) -> tuple[list[date], bool]:
     last7 = [today - timedelta(days=6 - offset) for offset in range(7)]
     bounds: list[date] = []
+    truncated = False
     if start is not None and num_days > 0:
-        bounds = [start + timedelta(days=offset) for offset in range(num_days)]
+        offset0, count, clamped = _study_window(start, num_days, today)
+        if clamped:
+            truncated = True
+        bounds = [start + timedelta(days=offset0 + offset) for offset in range(count)]
     found = set(last7) | set(bounds) | set(admin_dates)
     ordered = sorted(found)
-    truncated = False
     if ordered and (ordered[-1] - ordered[0]).days > MAX_SPAN_DAYS:
         cutoff = ordered[-1] - timedelta(days=MAX_SPAN_DAYS)
         keep = set(last7)
@@ -482,8 +499,14 @@ def _study_dates(
 def _outside_study(day: date, start: date | None, num_days: int) -> bool:
     if start is None or num_days <= 0:
         return False
-    end = start + timedelta(days=num_days - 1)
-    return day < start or day > end
+    if day < start:
+        return True
+    try:
+        end = start + timedelta(days=num_days - 1)
+    except OverflowError:
+        # The study end is past the largest date Python can name, so this day is inside it.
+        return False
+    return day > end
 
 
 @dataclass
@@ -976,6 +999,7 @@ def load_report(
         )
 
     invitations: list[Invitation] = []
+    sms_missing = False
     primary = profile.survey_id.strip()
     for survey in survey_rotation(profile):
         paths = (
@@ -986,10 +1010,15 @@ def load_report(
             f"distributions/sms?surveyId={survey.id}",
         )
         for path in paths:
+            # An email-only survey can 404 the SMS collection. That must not hide
+            # the email invitations. A missing primary survey still fails the email list.
+            sms = path.startswith("distributions/sms")
             try:
                 elements = client.get_elements(path)
             except QualtricsError as exc:
-                if exc.status == 404 and survey.id != primary:
+                if exc.status == 404 and (survey.id != primary or sms):
+                    if sms:
+                        sms_missing = True
                     continue
                 raise
             for element in elements:
@@ -1035,6 +1064,11 @@ def load_report(
             "Qualtrics rejected a metadata-only export filter, so a broader file was "
             "read in memory and reduced to completion fields before counting. Survey "
             "answers were not kept, and names, email, IP, and location were not requested."
+        )
+    if sms_missing:
+        report.limitations.append(
+            "SMS invitations could not be listed because Qualtrics returned not found. "
+            "Expected counts include only the invitation lists that responded."
         )
     return report
 

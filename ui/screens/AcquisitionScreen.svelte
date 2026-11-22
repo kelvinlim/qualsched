@@ -5,6 +5,7 @@
     dayLabel,
     heatOf,
     rowWindow,
+    statusPatchApplies,
     summaryText,
     visibleRows,
     windowSummary,
@@ -22,6 +23,8 @@
   let activeOnly = $state(true);
   let span = $state<"7" | "study">("7");
   let marking = $state("");
+  /** Bumped when the account or profile changes so an in-flight status write cannot land later. */
+  let markGeneration = 0;
 
   const shown = $derived(report ? visibleRows(report.rows, activeOnly) : []);
 
@@ -30,6 +33,8 @@
     const projectId = app.selectedProjectId;
     report = null;
     error = "";
+    marking = "";
+    markGeneration += 1;
     if (accountId && projectId) void load(accountId, projectId);
     return () => {
       report = null;
@@ -58,16 +63,31 @@
   }
 
   async function setMonitor(row: AcquisitionRow, status: "active" | "inactive") {
-    if (!app.account || !app.project || !report) return;
+    const accountId = app.account?.id;
+    const projectId = app.project?.id;
+    if (!accountId || !projectId || !report) return;
+    const generation = ++markGeneration;
     marking = row.contactId;
     error = "";
     try {
       const updated = await api.setAcquisitionStatus(
-        app.account.id,
-        app.project.id,
+        accountId,
+        projectId,
         row.contactId,
         status,
       );
+      if (generation !== markGeneration) return;
+      if (
+        !statusPatchApplies(
+          app.selectedAccountId,
+          app.selectedProjectId,
+          accountId,
+          projectId,
+          report !== null,
+        )
+      ) {
+        return;
+      }
       report = {
         ...report,
         rows: report.rows.map((item) =>
@@ -75,9 +95,20 @@
         ),
       };
     } catch (e) {
-      error = errorMessage(e);
+      if (
+        generation === markGeneration &&
+        statusPatchApplies(
+          app.selectedAccountId,
+          app.selectedProjectId,
+          accountId,
+          projectId,
+          true,
+        )
+      ) {
+        error = errorMessage(e);
+      }
     } finally {
-      marking = "";
+      if (generation === markGeneration) marking = "";
     }
   }
 

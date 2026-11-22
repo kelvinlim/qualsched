@@ -211,9 +211,18 @@ pub async fn load_report(
     }
 
     let mut invitations = Vec::new();
+    let mut sms_missing = false;
     let primary = project.survey_id.trim();
     for survey in project.survey_rotation() {
-        collect_invitations(client, project, &survey, primary, &mut invitations).await?;
+        collect_invitations(
+            client,
+            project,
+            &survey,
+            primary,
+            &mut invitations,
+            &mut sms_missing,
+        )
+        .await?;
     }
 
     let mut responses = Vec::new();
@@ -241,6 +250,11 @@ pub async fn load_report(
             "Qualtrics rejected a metadata-only export filter, so a broader file was read in memory and reduced to completion fields before counting. Survey answers were not kept, and names, email, IP, and location were not requested.".into(),
         );
     }
+    if sms_missing {
+        report.limitations.push(
+            "SMS invitations could not be listed because Qualtrics returned not found. Expected counts include only the invitation lists that responded.".into(),
+        );
+    }
     Ok(report)
 }
 
@@ -250,6 +264,7 @@ async fn collect_invitations(
     survey: &SurveyRef,
     primary: &str,
     invitations: &mut Vec<Invitation>,
+    sms_missing: &mut bool,
 ) -> AppResult<()> {
     let paths = [
         format!(
@@ -259,9 +274,17 @@ async fn collect_invitations(
         format!("distributions/sms?surveyId={}", survey.id),
     ];
     for path in paths {
+        // An email-only survey can 404 the SMS collection. That must not hide
+        // the email invitations. A missing primary survey still fails the email list.
+        let sms = path.contains("distributions/sms");
         let elements = match client.get_elements(&path).await {
             Ok(elements) => elements,
-            Err(AppError::NotFound(_)) if survey.id != primary => continue,
+            Err(AppError::NotFound(_)) if survey.id != primary || sms => {
+                if sms {
+                    *sms_missing = true;
+                }
+                continue;
+            }
             Err(err) => return Err(err),
         };
         for element in elements {

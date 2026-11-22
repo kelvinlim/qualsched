@@ -42,6 +42,11 @@ send time Qualtrics stored. A cancelled invitation that is no longer listed is n
 in the denominator. If `SurveysScheduled` is set but nothing is listed, the expected
 count stays at the listed invitations (possibly zero) and the screen says so.
 
+`NumDays` is clamped before any date is allocated. A corrupt value cannot walk
+millions of days; the screen keeps at most about a year and says the window was
+shortened. A 404 from the SMS invitation list does not hide email invitations.
+The screen says the SMS list was missing. Any other SMS error still fails the load.
+
 Days differ on purpose:
 
 - **ratio**, including 0/n — invitations were due and this many were completed
