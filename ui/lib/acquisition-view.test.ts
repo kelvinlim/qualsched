@@ -147,6 +147,11 @@ assertEqual(
   false,
   "switching profile cancels an in-flight status write",
 );
+assertEqual(
+  statusWriteIsCurrent(1, 2, 1, 1),
+  false,
+  "a stale save must not release a new save that was given the same ticket number",
+);
 
 const source = await import("node:fs/promises").then((fs) =>
   fs.readFile(new URL("./acquisition-view.ts", import.meta.url), "utf8"),

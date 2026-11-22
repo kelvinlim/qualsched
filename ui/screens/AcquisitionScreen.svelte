@@ -26,6 +26,8 @@
   let marking = $state("");
   /** Bumped only when the account or profile changes, not when another row is toggled. */
   let contextGeneration = 0;
+  /** Never reset, so a cleared map cannot hand ticket 1 to a new save. */
+  let nextStatusTicket = 0;
   /** Latest in-flight save for each participant. A newer click on the same row wins. */
   const markTickets = new Map<string, number>();
 
@@ -71,7 +73,7 @@
     const projectId = app.project?.id;
     if (!accountId || !projectId || !report) return;
     const generation = contextGeneration;
-    const ticket = (markTickets.get(row.contactId) ?? 0) + 1;
+    const ticket = ++nextStatusTicket;
     markTickets.set(row.contactId, ticket);
     marking = row.contactId;
     error = "";
@@ -121,7 +123,9 @@
         error = errorMessage(e);
       }
     } finally {
-      if (markTickets.get(row.contactId) === ticket) {
+      // Same check as a successful write. After a profile switch the map is cleared
+      // and a new save may reuse nothing: this request must not delete that ticket.
+      if (stillCurrent()) {
         markTickets.delete(row.contactId);
         if (marking === row.contactId) marking = "";
       }
