@@ -1,6 +1,6 @@
 {
   "name": "qualsched-web",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Web GUI for scheduling Qualtrics survey distributions. Same UI as QualSched desktop; participant PHI stays in Qualtrics.",
   "type": "module",
   "scripts": {

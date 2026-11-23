@@ -84,6 +84,21 @@ assertEqual(maskPhiCell(true, "ada@example.org"), PHI_MASK, "hidden cell masked 
 assertEqual(maskPhiCell(true, "   "), null, "hidden blank cell is null");
 assertEqual(maskPhiCell(false, "ada@example.org"), "ada@example.org", "unhidden cell kept");
 
+// Masking top-bar account, study/profile name, and sidebar signed-in user email.
+assertEqual(maskPhiText(true, "kolim-umn"), PHI_MASK, "hidden account name masked");
+assertEqual(maskPhiText(false, "kolim-umn"), "kolim-umn", "unhidden account name kept");
+assertEqual(
+  maskPhiText(true, "R34 EMA Spinal Cord Injury"),
+  PHI_MASK,
+  "hidden study/profile name masked",
+);
+assertEqual(
+  maskPhiText(true, "lim.kelvino@gmail.com", ""),
+  PHI_MASK,
+  "hidden signed-in user email masked",
+);
+assertEqual(maskPhiText(true, "", ""), "", "empty hidden user email stays empty");
+
 // Core field classification.
 assertEqual(isPhiCoreField("firstName"), true, "firstName is PHI");
 assertEqual(isPhiCoreField("lastName"), true, "lastName is PHI");

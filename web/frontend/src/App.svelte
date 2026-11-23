@@ -3,6 +3,7 @@
   import ChangelogPanel from "@qualsched/ui/components/ChangelogPanel.svelte";
   import TopBar from "@qualsched/ui/components/TopBar.svelte";
   import { NAV_ITEMS, navItemDisabled, navItemTitle } from "@qualsched/ui/lib/nav";
+  import { maskPhiText } from "@qualsched/ui/lib/phi";
   import { app } from "@qualsched/ui/lib/state.svelte";
   import { errorMessage, type UpdateInfo } from "@qualsched/ui/lib/types";
   import AccountsScreen from "@qualsched/ui/screens/AccountsScreen.svelte";
@@ -19,7 +20,7 @@
   import LegalPage from "./components/LegalPage.svelte";
   import LoginScreen from "./components/LoginScreen.svelte";
 
-  const VERSION = "0.2.6";
+  const VERSION = "0.2.7";
   const legalKind = api.legalKindFromPath();
 
   let loadError = $state("");
@@ -109,7 +110,7 @@
       {/each}
 
       <div class="session">
-        <div class="hint">{me.email}</div>
+        <div class="hint">{maskPhiText(app.hidePhi, me.email, "")}</div>
         <button class="link" type="button" onclick={() => void signOut()}>Sign out</button>
       </div>
 
