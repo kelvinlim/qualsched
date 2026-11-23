@@ -376,7 +376,7 @@ export const devLogin = (email: string) => json<Me>("/auth/dev-login", "POST", {
 // --- updates --------------------------------------------------------------
 
 export const checkForUpdate = async (): Promise<UpdateInfo> => {
-  const currentVersion = "0.2.4";
+  const currentVersion = "0.2.5";
   try {
     const res = await fetch(
       "https://api.github.com/repos/kelvinlim/qualsched/releases/latest",

@@ -74,29 +74,34 @@ JSON_EXPORT_FORBIDDEN = frozenset(
 )
 
 PREREQUISITE = (
-    "A completion is counted only when the response is finished, its status is a "
-    "real response (IP Address, Imported, or Offline — not preview, test, synthetic, "
-    "or spam), and RecipientID or contactId exactly equals that participant's "
-    "Qualtrics contactId (CID_…) or contactLookupId (CGC_…). Name, email, phone, "
-    "and external data reference are not used. Qualtrics adds RecipientID for "
-    "invitations sent to directory contacts; if the export has no such field, "
-    "completions stay unmatched instead of being guessed."
+    "Completion counts come from Qualtrics' per-invitation stats.finished on each "
+    "individual SMS or email distribution listed for this mailing list. No survey "
+    "answers or response files are downloaded. Responses that Qualtrics auto-closed "
+    "after expiry are counted as finished by Qualtrics."
 )
 
 DENOMINATOR_NOTE = (
-    "Expected counts are invitations Qualtrics still lists, placed on the "
-    "participant's local day by send time. The scheduler is not re-run, so "
-    "changed or random windows follow the booked invitation. A cancelled "
-    "invitation that is no longer listed is not in the denominator. The current "
-    "day counts only prompts whose send time has already passed."
+    "Expected counts are invitations Qualtrics still lists for this mailing list, "
+    "placed on the participant's local day by send time. Cancelled invitations that "
+    "are no longer listed are not in the denominator. The current day counts only "
+    "prompts whose send time has already passed."
 )
 
 DayKind = Literal["ratio", "future", "none", "nonStudy", "unknown"]
-ExportMode = Literal["columns", "metadata", "no-answers", "full"]
+PromptStatus = Literal["finished", "started", "sent", "failed", "scheduled", "unknown"]
+ExportMode = Literal["distribution-stats", "columns", "metadata", "no-answers", "full"]
 
 
 class AcquisitionParseError(Exception):
     """Export bytes could not be read. The message is static and has no payload."""
+
+
+class PromptDetail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sendLocal: str
+    method: Literal["sms", "email"]
+    status: PromptStatus
 
 
 class DayCell(BaseModel):
@@ -107,6 +112,7 @@ class DayCell(BaseModel):
     completed: int | None = None
     expected: int | None = None
     later: int = 0
+    prompts: list[PromptDetail] = Field(default_factory=list)
 
 
 class ToDate(BaseModel):
@@ -196,6 +202,12 @@ class Invitation:
     lookup_id: str
     send: datetime | None
     expire: datetime | None
+    method: Literal["sms", "email"] = "sms"
+    sent: int = 0
+    started: int = 0
+    finished: int = 0
+    failed: int = 0
+    has_stats: bool = False
 
 
 @dataclass
@@ -605,11 +617,11 @@ def _match_contact(
 def aggregate(
     participants: list[Participant],
     invitations: list[Invitation],
-    responses: list[ParsedResponse],
+    responses: list[ParsedResponse] | None = None,
     *,
     now: datetime,
     profile_timezone: str,
-    export_mode: ExportMode = "columns",
+    export_mode: ExportMode = "distribution-stats",
 ) -> AcquisitionReport:
     if now.tzinfo is None:
         now = now.replace(tzinfo=UTC)
@@ -618,30 +630,6 @@ def aggregate(
 
     excluded = ExcludedCounts()
     limitations = [DENOMINATOR_NOTE]
-    usable: list[ParsedResponse] = []
-    seen_ids: set[str] = set()
-    for fact in responses:
-        if fact.response_id in seen_ids:
-            excluded.duplicateIds += 1
-            continue
-        seen_ids.add(fact.response_id)
-        bucket = _classify(fact)
-        if bucket == "preview":
-            excluded.preview += 1
-        elif bucket == "test":
-            excluded.test += 1
-        elif bucket == "synthetic":
-            excluded.synthetic += 1
-        elif bucket == "spam":
-            excluded.spam += 1
-        elif bucket == "unfinished":
-            excluded.unfinished += 1
-        elif bucket == "other":
-            excluded.otherStatus += 1
-        elif bucket == "anonymous":
-            excluded.anonymous += 1
-        else:
-            usable.append(fact)
 
     by_contact: dict[str, int] = {}
     by_lookup: dict[str, int] = {}
@@ -651,68 +639,37 @@ def aggregate(
         if person.lookup_id:
             by_lookup[person.lookup_id] = index
 
-    attached: dict[int, list[_Admin]] = {index: [] for index in range(len(participants))}
+    attached: dict[int, list[Invitation]] = {index: [] for index in range(len(participants))}
     unplaceable: dict[int, int] = {index: 0 for index in range(len(participants))}
-    known_ids: set[str] = set()
-    dist_owner: dict[str, int] = {}
+    unowned_invitations = 0
+    removed_contact_invitations = 0
     for invite in invitations:
-        if not invite.distribution_id:
+        if not invite.distribution_id or not invite.lookup_id:
+            unowned_invitations += 1
             excluded.unjoinedInvitations += 1
             continue
         owner = by_lookup.get(invite.lookup_id)
         if owner is None:
+            owner = by_contact.get(invite.lookup_id)
+        if owner is None:
+            removed_contact_invitations += 1
             excluded.unjoinedInvitations += 1
             continue
-        known_ids.add(invite.distribution_id)
-        dist_owner[invite.distribution_id] = owner
         if invite.send is None:
             unplaceable[owner] += 1
             continue
-        attached[owner].append(
-            _Admin(invite.distribution_id, invite.send, invite.expire)
-        )
+        attached[owner].append(invite)
 
-    grouped: dict[int, list[tuple[ParsedResponse, str | None]]] = {
-        index: [] for index in range(len(participants))
-    }
-    for fact in usable:
-        recipient = fact.recipient_id or ""
-        owner = by_contact.get(recipient)
-        if owner is None:
-            owner = by_lookup.get(recipient)
-        if owner is None:
-            excluded.unmatchedRecipient += 1
-            continue
-        dist_id = _link_distribution(fact.distribution_token, fact.q_dl, known_ids)
-        if dist_id:
-            other = dist_owner.get(dist_id)
-            if other is not None and other != owner:
-                excluded.conflict += 1
-                grouped[owner].append((fact, ""))  # counted as unmatched for this person
-                continue
-        grouped[owner].append((fact, dist_id))
-
-    if excluded.anonymous:
+    if unowned_invitations:
         limitations.append(
-            f"{excluded.anonymous} finished response(s) had no recipient id and were not "
-            "applied to any row. Matched counts can be low. "
-            + PREREQUISITE
-        )
-    if excluded.unmatchedRecipient:
-        limitations.append(
-            f"{excluded.unmatchedRecipient} finished response(s) named a recipient id that "
-            "is not on this mailing list. They were not applied to a row."
-        )
-    if excluded.conflict:
-        limitations.append(
-            f"{excluded.conflict} response(s) named both a participant and a different "
-            "participant's invitation. They were not applied to either row."
-        )
-    if excluded.unjoinedInvitations:
-        limitations.append(
-            f"{excluded.unjoinedInvitations} listed invitation(s) had no participant id "
+            f"{unowned_invitations} listed invitation(s) had no participant id "
             "this profile could resolve. They were not placed on a row, and expected "
             "counts were not guessed."
+        )
+    if removed_contact_invitations:
+        limitations.append(
+            f"{removed_contact_invitations} listed invitation(s) on this mailing list "
+            "belong to contacts no longer on the list and were not shown."
         )
 
     rows: list[AcquisitionRow] = []
@@ -720,6 +677,7 @@ def aggregate(
     scheduled_without_invites = False
     bad_start = False
     unreadable_send = False
+    any_missing_stats = False
     for index, person in enumerate(participants):
         zone, source = _resolve_zone(person.timezone_name, profile_timezone)
         monitor = normalize_monitor(person.monitor)
@@ -743,47 +701,94 @@ def aggregate(
             ambiguous = unmatched = duplicates = 0
         else:
             today = now.astimezone(zone).date()
-            admins = sorted(attached[index], key=lambda item: (item.send, item.distribution_id))
-            assigned, ambiguous, unmatched, duplicates = _match_contact(
-                admins, grouped[index]
+            admins = sorted(
+                attached[index],
+                key=lambda item: (item.send or now, item.distribution_id),
             )
-            admin_dates = [item.send.astimezone(zone).date() for item in admins]
+            ambiguous = unmatched = duplicates = 0
+            admin_dates = [
+                item.send.astimezone(zone).date()
+                for item in admins
+                if item.send is not None
+            ]
             start = _parse_start(person.start_date)
             if person.start_date.strip() and start is None:
                 bad_start = True
             dates, row_truncated = _study_dates(start, person.num_days, today, admin_dates)
             truncated = truncated or row_truncated
-            by_day: dict[date, list[int]] = {item: [] for item in dates}
-            for admin_index, admin in enumerate(admins):
-                local = admin.send.astimezone(zone).date()
-                by_day.setdefault(local, []).append(admin_index)
+            by_day: dict[date, list[Invitation]] = {item: [] for item in dates}
+            for invite in admins:
+                if invite.send is None:
+                    continue
+                local = invite.send.astimezone(zone).date()
+                by_day.setdefault(local, []).append(invite)
                 if local not in dates:
                     dates.append(local)
             dates = sorted(set(dates))
             days = []
             to_completed = 0
             to_expected = 0
+            row_missing_stats = False
             for day in dates:
-                indexes = by_day.get(day, [])
-                if force_unknown:
-                    days.append(DayCell(date=day.isoformat(), kind="unknown"))
-                    continue
+                day_invites = by_day.get(day, [])
+                day_prompts: list[PromptDetail] = []
                 due = 0
                 later = 0
                 completed = 0
-                for admin_index in indexes:
-                    admin = admins[admin_index]
-                    matched = admin_index in assigned
-                    if admin.send <= now or matched:
-                        due += 1
-                        if matched:
-                            completed += 1
+                day_unknown = False
+                for invite in day_invites:
+                    assert invite.send is not None
+                    send_local = invite.send.astimezone(zone).strftime("%H:%M")
+                    if invite.finished > 0:
+                        p_status: PromptStatus = "finished"
+                    elif invite.send > now:
+                        p_status = "scheduled"
+                    elif not invite.has_stats:
+                        p_status = "unknown"
+                    elif invite.failed > 0 and invite.sent == 0:
+                        p_status = "failed"
+                    elif invite.started > 0:
+                        p_status = "started"
                     else:
+                        p_status = "sent"
+                    day_prompts.append(
+                        PromptDetail(
+                            sendLocal=send_local,
+                            method=invite.method,
+                            status=p_status,
+                        )
+                    )
+                    if p_status == "scheduled":
                         later += 1
-                if due == 0 and later > 0:
-                    days.append(DayCell(date=day.isoformat(), kind="future", later=later))
+                    else:
+                        due += 1
+                        if p_status == "finished":
+                            completed += 1
+                        elif p_status == "unknown":
+                            day_unknown = True
+                            row_missing_stats = True
+                            any_missing_stats = True
+                if force_unknown or day_unknown:
+                    days.append(
+                        DayCell(
+                            date=day.isoformat(),
+                            kind="unknown",
+                            prompts=day_prompts,
+                        )
+                    )
+                elif due == 0 and later > 0:
+                    days.append(
+                        DayCell(
+                            date=day.isoformat(),
+                            kind="future",
+                            later=later,
+                            prompts=day_prompts,
+                        )
+                    )
                 elif due == 0 and later == 0:
-                    kind: DayKind = "nonStudy" if _outside_study(day, start, person.num_days) else "none"
+                    kind: DayKind = (
+                        "nonStudy" if _outside_study(day, start, person.num_days) else "none"
+                    )
                     days.append(DayCell(date=day.isoformat(), kind=kind))
                 else:
                     days.append(
@@ -793,6 +798,7 @@ def aggregate(
                             completed=completed,
                             expected=due,
                             later=later,
+                            prompts=day_prompts,
                         )
                     )
                     if day <= today:
@@ -800,11 +806,8 @@ def aggregate(
                         to_expected += due
             row_definitive = (
                 not force_unknown
-                and ambiguous == 0
-                and unmatched == 0
-                and excluded.anonymous == 0
-                and excluded.conflict == 0
-                and excluded.unjoinedInvitations == 0
+                and not row_missing_stats
+                and unowned_invitations == 0
             )
             if (
                 person.surveys_scheduled
@@ -861,18 +864,15 @@ def aggregate(
         limitations.append(
             "A StartDate could not be read, so days outside the study were not marked for that participant."
         )
-    if any(row.ambiguous or row.unmatchedCompletions for row in rows):
+    if any_missing_stats:
         limitations.append(
-            "Some finished responses matched a participant but not a single invitation "
-            "(more than one open prompt, a late response with several unmatched prompts, "
-            "or an invitation id this profile does not list). Those responses were not "
-            "added to a day."
+            "Some listed invitations did not include completion stats from Qualtrics, so those days are marked unknown."
         )
 
-    # The anonymous / unjoined messages above are added even when zero. Guard:
+    # Guard against empty strings in limitations.
     limitations = [item for item in limitations if item]
     definitive = all(row.definitive for row in rows) if rows else (
-        excluded.anonymous == 0 and excluded.unjoinedInvitations == 0 and excluded.conflict == 0
+        unowned_invitations == 0 and excluded.unjoinedInvitations == 0
     )
     return AcquisitionReport(
         generatedAt=now.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -1230,6 +1230,54 @@ def _lookup_of(element: dict[str, Any]) -> str:
     return ""
 
 
+def _mailing_list_of(element: dict[str, Any]) -> str:
+    recipients = element.get("recipients")
+    if isinstance(recipients, dict):
+        raw = recipients.get("mailingListId")
+        if isinstance(raw, str):
+            return raw.strip()
+    return ""
+
+
+def _stat_int(stats: dict[str, Any], key: str) -> int:
+    value = stats.get(key)
+    if isinstance(value, bool) or value is None:
+        return 0
+    if isinstance(value, int):
+        return max(value, 0)
+    if isinstance(value, float):
+        return max(int(value), 0)
+    if isinstance(value, str):
+        try:
+            return max(int(float(value.strip())), 0)
+        except ValueError:
+            return 0
+    return 0
+
+
+def _invitation_from_element(
+    element: dict[str, Any],
+    *,
+    method: Literal["sms", "email"],
+) -> Invitation:
+    dist_id = element.get("id")
+    send_raw = element.get("sendDate")
+    stats = element.get("stats")
+    has_stats = isinstance(stats, dict)
+    return Invitation(
+        distribution_id=dist_id.strip() if isinstance(dist_id, str) else "",
+        lookup_id=_lookup_of(element),
+        send=parse_send_date(send_raw) if isinstance(send_raw, str) else None,
+        expire=_expiration(element),
+        method=method,
+        sent=_stat_int(stats, "sent") if isinstance(stats, dict) else 0,
+        started=_stat_int(stats, "started") if isinstance(stats, dict) else 0,
+        finished=_stat_int(stats, "finished") if isinstance(stats, dict) else 0,
+        failed=_stat_int(stats, "failed") if isinstance(stats, dict) else 0,
+        has_stats=has_stats,
+    )
+
+
 def _int_field(embedded: dict[str, str], key: str) -> int:
     raw = embedded.get(key, "").strip()
     if not raw:
@@ -1246,7 +1294,6 @@ def _int_field(embedded: dict[str, str], key: str) -> int:
 _MODE_RANK = {"columns": 0, "metadata": 1, "no-answers": 2, "full": 3}
 
 
-@dataclass
 @dataclass
 class PendingExport:
     stage: str
@@ -1292,26 +1339,13 @@ def _advance_survey(job: _ExportJob) -> bool:
 
 def _report_from_job(job: _ExportJob) -> AcquisitionReport:
     _note("Counting completions", "parse")
-    responses = job.responses or []
     report = aggregate(
         job.participants,
         job.invitations,
-        responses,
         now=job.moment,
         profile_timezone=job.profile_timezone,
-        export_mode=job.mode,
+        export_mode="distribution-stats",
     )
-    if job.mode != "columns":
-        report.limitations.append(
-            "Qualtrics rejected a filtered response export, so a broader file was "
-            "read in memory and reduced to completion fields before counting. Survey "
-            "answers were not kept, and names, email, IP, and location were not requested."
-        )
-    if job.copy_failed:
-        report.limitations.append(
-            "A leftover survey copy could not be exported. Completions recorded "
-            "only on that copy are not in these counts."
-        )
     if job.sms_missing:
         report.limitations.append(
             "SMS invitations could not be listed because Qualtrics returned not found. "
@@ -1355,84 +1389,8 @@ def _download_ready(job: _ExportJob, client: QualtricsClient, survey_id: str, pr
 
 
 def _step_export(job: _ExportJob, client: QualtricsClient, clock) -> AcquisitionReport | PendingExport:
-    """One slice: create, a single poll, or one download.
-
-    A request that sees ``complete`` does not also download, and a download
-    does not start the next survey. Each of those is its own request so the
-    60 second proxy is not holding the file transfer plus another export.
-    """
-    total = len(job.survey_ids)
-    current = job.index + 1
-    if job.phase == "download":
-        label = _survey_label("Downloading export", current, total)
-        if label:
-            _note(label, "download")
-    elif job.phase == "create":
-        label = _survey_label("Exporting survey", current, total)
-        if label:
-            _note(label, "start")
-    else:
-        label = _survey_label("Waiting for export", current, total)
-        if label:
-            _note(label, "poll")
-    if clock() > job.deadline:
-        if job.phase == "download" and job.file_id and job.index == 0:
-            outcome = _download_ready(job, client, job.survey_ids[0], True)
-            if isinstance(outcome, PendingExport):
-                job.copy_failed = True
-                return _report_from_job(job)
-            return outcome
-        if job.index > 0:
-            job.copy_failed = True
-            return _report_from_job(job)
-        raise export_failure("poll", detail="timeout")
-    survey_id = job.survey_ids[job.index]
-    primary = survey_id == job.primary
-    if job.phase == "download":
-        _stop_if_requested()
-        return _download_ready(job, client, survey_id, primary)
-    if job.phase == "create":
-        _stop_if_requested()
-        try:
-            progress, used = _start_export(client, survey_id)
-        except QualtricsError as exc:
-            done = _skip_copy_or_raise(job, primary, exc)
-            if done is not None:
-                return done
-            return PendingExport("start")
-        job.progress_id = progress
-        if _MODE_RANK[used] > _MODE_RANK[job.mode]:
-            job.mode = used
-        job.phase = "poll"
-        waiting = _survey_label("Waiting for export", current, total)
-        if waiting:
-            _note(waiting, "poll")
-    _stop_if_requested()
-    try:
-        file_id = _poll_once(client, survey_id, job.progress_id or "")
-    except QualtricsError as exc:
-        done = _skip_copy_or_raise(job, primary, exc)
-        if done is not None:
-            return done
-        return PendingExport("start")
-    if file_id is None:
-        job.polls += 1
-        job.polls_survey += 1
-        if (
-            job.polls_survey > job.poll_limit_survey
-            or job.polls > job.poll_limit_total
-            or clock() > job.deadline
-        ):
-            if not primary:
-                job.copy_failed = True
-                if not _advance_survey(job):
-                    return _report_from_job(job)
-                return PendingExport("start")
-            raise export_failure("poll", detail="timeout")
-        return PendingExport("poll")
-    job.file_id = file_id
-    job.phase = "download"
-    return PendingExport("download")
+    """Count completions directly from Qualtrics per-invitation distribution stats."""
+    return _report_from_job(job)
 
 
 def _new_job(
@@ -1511,14 +1469,13 @@ def _new_job(
             for element in elements:
                 if not isinstance(element, dict):
                     continue
-                dist_id = element.get("id")
-                send_raw = element.get("sendDate")
+                ml = _mailing_list_of(element)
+                if ml and ml != mailing_list.strip():
+                    continue
                 invitations.append(
-                    Invitation(
-                        distribution_id=dist_id.strip() if isinstance(dist_id, str) else "",
-                        lookup_id=_lookup_of(element),
-                        send=parse_send_date(send_raw) if isinstance(send_raw, str) else None,
-                        expire=_expiration(element),
+                    _invitation_from_element(
+                        element,
+                        method="sms" if sms else "email",
                     )
                 )
     _note("Invitations loaded", "start")
@@ -1654,7 +1611,7 @@ def load_report(
     poll_limit_total: int = POLL_LIMIT_TOTAL,
     stop=None,
 ) -> AcquisitionReport:
-    """Fetch contacts, listed invitations, and response exports. Nothing is written."""
+    """Fetch contacts and listed invitations with completion stats. Nothing is written."""
     token = attempt or f"direct-{time.monotonic_ns()}"
     cancel_token = _CANCEL_CB.set(stop)
     try:

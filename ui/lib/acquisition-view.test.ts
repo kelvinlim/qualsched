@@ -1,20 +1,29 @@
 /**
- * Heatmap labels, the active-only filter, and the promise that this module
- * does not touch browser storage. Run with `node --experimental-strip-types`.
+ * Heatmap labels, Monday-aligned weekly stacking, day detail popovers, active-only
+ * filter, and the promise that this module does not touch browser storage.
+ * Run with `node --experimental-strip-types`.
  */
 import {
+  WEEKDAY_HEADERS,
+  dayDetail,
   dayGlyph,
   dayLabel,
+  formatFullDate,
+  formatShortDate,
+  groupByWeeks,
   heatOf,
+  isoWeekday,
   lastSeven,
   monitorStatus,
+  promptStatusLabel,
+  rowWindow,
   statusPatchApplies,
   statusWriteIsCurrent,
   summaryText,
   visibleRows,
   windowSummary,
 } from "./acquisition-view.ts";
-import type { AcquisitionDay } from "./types.ts";
+import type { AcquisitionDay, AcquisitionRow } from "./types.ts";
 
 function assertEqual(got: unknown, expected: unknown, label: string) {
   const g = JSON.stringify(got);
@@ -29,6 +38,104 @@ const ratio = (date: string, completed: number, expected: number, later = 0): Ac
   expected,
   later,
 });
+
+assertEqual(WEEKDAY_HEADERS.map((h) => h.short), ["M", "T", "W", "T", "F", "S", "S"], "Mon-Sun header");
+assertEqual(WEEKDAY_HEADERS.map((h) => h.weekend), [false, false, false, false, false, true, true], "Sat/Sun marked weekend");
+
+assertEqual(isoWeekday("2026-11-16"), 0, "2026-11-16 is Monday");
+assertEqual(isoWeekday("2026-11-21"), 5, "2026-11-21 is Saturday");
+assertEqual(isoWeekday("2026-11-22"), 6, "2026-11-22 is Sunday");
+assertEqual(formatShortDate("2026-11-16"), "Nov 16", "short date");
+assertEqual(formatShortDate("2026-01-05", true), "Jan 5, 2026", "short date with year");
+assertEqual(formatFullDate("2026-11-18"), "Wed, Nov 18, 2026", "full date");
+
+// Week grouping aligns every row Mon..Sun and omits blank gap weeks.
+const weeks = groupByWeeks([
+  ratio("2026-11-18", 2, 4), // Wed
+  ratio("2026-11-21", 1, 4), // Sat
+  ratio("2026-11-22", 0, 4), // Sun
+  ratio("2026-11-23", 4, 4), // Next Mon
+  ratio("2026-12-07", 3, 4), // Gap week omitted
+]);
+assertEqual(weeks.length, 3, "only weeks with days are emitted");
+assertEqual(weeks[0].monday, "2026-11-16", "first week starts Monday");
+assertEqual(weeks[0].label, "Nov 16", "same-year label omits year");
+assertEqual(
+  weeks[0].cells.map((c) => c?.date ?? null),
+  [null, null, "2026-11-18", null, null, "2026-11-21", "2026-11-22"],
+  "leading and mid-week null padding preserves Mon-Sun column alignment",
+);
+assertEqual(weeks[1].cells[0]?.date, "2026-11-23", "Monday sits in column 0");
+assertEqual(weeks[2].monday, "2026-12-07", "gap week skipped cleanly");
+
+// Multi-year span adds years to week labels.
+const crossYear = groupByWeeks([
+  ratio("2025-12-30", 1, 2),
+  ratio("2026-01-05", 2, 2),
+]);
+assertEqual(crossYear.map((w) => w.label), ["Dec 29, 2025", "Jan 5, 2026"], "multi-year week labels include year");
+
+// Rolling 7-day window ending Sunday fits 1 row; ending Wednesday stacks across 2 rows.
+const sevenMidWeek = groupByWeeks(lastSeven([], "2026-11-18"));
+assertEqual(sevenMidWeek.length, 2, "rolling 7-day window splits across Mon-Sun rows");
+assertEqual(
+  sevenMidWeek[0].cells.map((c) => c?.date ?? null),
+  [null, null, null, "2026-11-12", "2026-11-13", "2026-11-14", "2026-11-15"],
+  "prior Thu-Sun aligned to columns 3..6",
+);
+assertEqual(
+  sevenMidWeek[1].cells.map((c) => c?.date ?? null),
+  ["2026-11-16", "2026-11-17", "2026-11-18", null, null, null, null],
+  "current Mon-Wed aligned to columns 0..2",
+);
+
+// Study window strips unrelated nonStudy tail days when active study days exist.
+const rowSample: AcquisitionRow = {
+  contactId: "CID_1",
+  displayName: "P1",
+  monitor: "active",
+  timezone: "America/Chicago",
+  timezoneSource: "contact",
+  today: "2026-11-22",
+  definitive: true,
+  ambiguous: 0,
+  unmatchedCompletions: 0,
+  duplicateCompletions: 0,
+  days: [
+    ratio("2026-10-01", 4, 4),
+    { date: "2026-11-22", kind: "nonStudy", later: 0 },
+  ],
+  toDate: { completed: 4, expected: 4, provisional: false },
+};
+assertEqual(
+  rowWindow(rowSample, "study").map((d) => d.date),
+  ["2026-10-01"],
+  "study window omits unrelated nonStudy tail days",
+);
+assertEqual(rowWindow(rowSample, "7").length, 7, "7-day window keeps 7 days");
+
+// Prompt detail and hover info.
+assertEqual(promptStatusLabel("finished"), "Completed");
+assertEqual(promptStatusLabel("started"), "Started (not finished)");
+assertEqual(promptStatusLabel("sent"), "Sent (no response)");
+assertEqual(promptStatusLabel("failed"), "Delivery failed");
+assertEqual(promptStatusLabel("scheduled"), "Scheduled (not yet due)");
+assertEqual(promptStatusLabel("unknown"), "Status unknown");
+
+const richDay: AcquisitionDay = {
+  date: "2026-11-21",
+  kind: "ratio",
+  completed: 3,
+  expected: 4,
+  later: 1,
+  prompts: [{ sendLocal: "08:00", method: "sms", status: "finished" }],
+};
+const detail = dayDetail(richDay);
+assertEqual(detail.heading, "Sat, Nov 21, 2026", "detail heading");
+assertEqual(detail.isWeekend, true, "Saturday flagged as weekend");
+assertEqual(detail.summary, "3 of 4 completed (75%)", "detail summary");
+assertEqual(detail.laterNote, "1 scheduled later today (not due yet)", "detail later note");
+assertEqual(detail.prompts.length, 1, "detail prompts carried through");
 
 assertEqual(heatOf(ratio("2026-07-15", 0, 4)), "0", "true zero is not an empty day");
 assertEqual(heatOf(ratio("2026-07-15", 1, 4)), "1", "1/4");
@@ -102,7 +209,11 @@ assertEqual(
 assertEqual(days[1].kind, "unknown", "a missing day in the window is unknown, not zero");
 assertEqual(windowSummary(days).expected, null, "unknown day blocks a confident window total");
 assertEqual(
-  windowSummary([ratio("2026-07-13", 2, 2), ratio("2026-07-14", 0, 1), { date: "2026-07-16", kind: "future", later: 3 }]),
+  windowSummary([
+    ratio("2026-07-13", 2, 2),
+    ratio("2026-07-14", 0, 1),
+    { date: "2026-07-16", kind: "future", later: 3 },
+  ]),
   { completed: 2, expected: 3 },
   "future prompts are outside the window total",
 );

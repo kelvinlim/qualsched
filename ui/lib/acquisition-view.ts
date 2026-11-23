@@ -3,7 +3,12 @@
  * network. The screen holds the report in component state and drops it when
  * the account, profile, or screen changes.
  */
-import type { AcquisitionDay, AcquisitionRow } from "./types";
+import type {
+  AcquisitionDay,
+  AcquisitionPrompt,
+  AcquisitionPromptStatus,
+  AcquisitionRow,
+} from "./types";
 
 export type Heat =
   | "0"
@@ -15,6 +20,47 @@ export type Heat =
   | "none"
   | "nonStudy"
   | "unknown";
+
+export const WEEKDAY_HEADERS = [
+  { short: "M", full: "Monday", weekend: false },
+  { short: "T", full: "Tuesday", weekend: false },
+  { short: "W", full: "Wednesday", weekend: false },
+  { short: "T", full: "Thursday", weekend: false },
+  { short: "F", full: "Friday", weekend: false },
+  { short: "S", full: "Saturday", weekend: true },
+  { short: "S", full: "Sunday", weekend: true },
+] as const;
+
+const MONTHS_SHORT = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+const WEEKDAYS_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+
+export interface AcquisitionWeek {
+  monday: string;
+  label: string;
+  cells: (AcquisitionDay | null)[];
+}
+
+export interface AcquisitionDayDetail {
+  heading: string;
+  isWeekend: boolean;
+  summary: string;
+  laterNote: string;
+  prompts: AcquisitionPrompt[];
+}
 
 /**
  * Two rows can be saved at once. A write is current when the screen is still the
@@ -61,6 +107,25 @@ function shiftDate(iso: string, days: number): string {
   return utc.toISOString().slice(0, 10);
 }
 
+/** ISO day of week for YYYY-MM-DD: 0 = Monday ... 6 = Sunday. */
+export function isoWeekday(isoDate: string): number {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const utc = new Date(Date.UTC(year, (month || 1) - 1, day || 1));
+  return (utc.getUTCDay() + 6) % 7;
+}
+
+export function formatShortDate(isoDate: string, includeYear = false): string {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const mon = MONTHS_SHORT[(month || 1) - 1] ?? "Jan";
+  const d = Number(day) || 1;
+  return includeYear ? `${mon} ${d}, ${year}` : `${mon} ${d}`;
+}
+
+export function formatFullDate(isoDate: string): string {
+  const dow = WEEKDAYS_SHORT[isoWeekday(isoDate)] ?? "Mon";
+  return `${dow}, ${formatShortDate(isoDate, true)}`;
+}
+
 /** The participant's last 7 local dates, ending on `today`. Missing days are unknown. */
 export function lastSeven(days: AcquisitionDay[], today: string): AcquisitionDay[] {
   const byDate = new Map(days.map((day) => [day.date, day]));
@@ -70,6 +135,35 @@ export function lastSeven(days: AcquisitionDay[], today: string): AcquisitionDay
     out.push(byDate.get(date) ?? { date, kind: "unknown", later: 0 });
   }
   return out;
+}
+
+/**
+ * Group ordered days into Monday–Sunday rows so identical weekdays align
+ * vertically across weeks. Non-present gap weeks are omitted rather than
+ * generating blank weeks.
+ */
+export function groupByWeeks(days: AcquisitionDay[]): AcquisitionWeek[] {
+  if (days.length === 0) return [];
+  const buckets = new Map<string, (AcquisitionDay | null)[]>();
+  const order: string[] = [];
+  for (const day of days) {
+    const col = isoWeekday(day.date);
+    const monday = shiftDate(day.date, -col);
+    let cells = buckets.get(monday);
+    if (!cells) {
+      cells = [null, null, null, null, null, null, null];
+      buckets.set(monday, cells);
+      order.push(monday);
+    }
+    cells[col] = day;
+  }
+  const years = new Set(order.map((monday) => monday.slice(0, 4)));
+  const multiYear = years.size > 1;
+  return order.map((monday) => ({
+    monday,
+    label: formatShortDate(monday, multiYear),
+    cells: buckets.get(monday)!,
+  }));
 }
 
 export function heatOf(day: AcquisitionDay): Heat {
@@ -102,6 +196,54 @@ export function dayLabel(day: AcquisitionDay): string {
   return `${day.date}: expected count unknown`;
 }
 
+export function promptStatusLabel(status: AcquisitionPromptStatus): string {
+  switch (status) {
+    case "finished":
+      return "Completed";
+    case "started":
+      return "Started (not finished)";
+    case "sent":
+      return "Sent (no response)";
+    case "failed":
+      return "Delivery failed";
+    case "scheduled":
+      return "Scheduled (not yet due)";
+    default:
+      return "Status unknown";
+  }
+}
+
+export function dayDetail(day: AcquisitionDay): AcquisitionDayDetail {
+  const heading = formatFullDate(day.date);
+  const isWeekend = isoWeekday(day.date) >= 5;
+  const prompts = day.prompts ?? [];
+  let summary = "";
+  let laterNote = "";
+  if (day.kind === "ratio") {
+    const completed = day.completed ?? 0;
+    const expected = day.expected ?? 0;
+    if (expected > 0) {
+      const pct = Math.round((completed / expected) * 100);
+      summary = `${completed} of ${expected} completed (${pct}%)`;
+    } else {
+      summary = `${completed} of ${expected} completed`;
+    }
+    if (day.later > 0) {
+      laterNote = `${day.later} scheduled later today (not due yet)`;
+    }
+  } else if (day.kind === "future") {
+    const count = day.later === 1 ? "1 scheduled" : `${day.later} scheduled`;
+    summary = `${count}, none due yet`;
+  } else if (day.kind === "none") {
+    summary = "No surveys expected";
+  } else if (day.kind === "nonStudy") {
+    summary = "Outside the study window";
+  } else {
+    summary = "Completion status unknown";
+  }
+  return { heading, isWeekend, summary, laterNote, prompts };
+}
+
 export function summaryText(
   completed: number | null | undefined,
   expected: number | null | undefined,
@@ -130,7 +272,10 @@ export function windowSummary(days: AcquisitionDay[]): {
 }
 
 export function rowWindow(row: AcquisitionRow, span: "7" | "study"): AcquisitionDay[] {
-  return span === "7" ? lastSeven(row.days, row.today) : row.days;
+  if (span === "7") return lastSeven(row.days, row.today);
+  return row.days.some((day) => day.kind !== "nonStudy")
+    ? row.days.filter((day) => day.kind !== "nonStudy")
+    : row.days;
 }
 
 /** Glyph inside the block so the state is readable without color. */

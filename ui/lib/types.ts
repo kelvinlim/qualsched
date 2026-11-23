@@ -205,12 +205,27 @@ export interface UpdateInfo {
 
 export type AcquisitionDayKind = "ratio" | "future" | "none" | "nonStudy" | "unknown";
 
+export type AcquisitionPromptStatus =
+  | "finished"
+  | "started"
+  | "sent"
+  | "failed"
+  | "scheduled"
+  | "unknown";
+
+export interface AcquisitionPrompt {
+  sendLocal: string;
+  method: Method;
+  status: AcquisitionPromptStatus;
+}
+
 export interface AcquisitionDay {
   date: string;
   kind: AcquisitionDayKind;
   completed?: number | null;
   expected?: number | null;
   later: number;
+  prompts?: AcquisitionPrompt[];
 }
 
 export interface AcquisitionToDate {
@@ -255,7 +270,7 @@ export interface AcquisitionReport {
   definitive: boolean;
   prerequisite: string;
   limitations: string[];
-  exportMode: "columns" | "metadata" | "no-answers" | "full";
+  exportMode: "distribution-stats" | "columns" | "metadata" | "no-answers" | "full";
   excluded: AcquisitionExcluded;
   rows: AcquisitionRow[];
 }

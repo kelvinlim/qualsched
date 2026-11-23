@@ -4,6 +4,17 @@ All notable changes to QualSched Web are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-11-22
+
+### Fixed
+- Fixed Acquisition zero counts and cross-mailing-list unjoined invitations by counting per-invitation Qualtrics `stats.finished` (SMS filtered by `recipients.mailingListId` + email distributions) without downloading survey response exports, and separating removed-contact invitations cleanly from unowned invitations.
+
+### Changed
+- Acquisition waits for an explicit **Load** / **Refresh** click instead of auto-downloading on open or profile switch, and arranges day boxes into vertically stacked Monday–Sunday 7-day rows with weekend column styling and week-start labels.
+
+### Added
+- Hover/focus day-detail popover on Acquisition day boxes showing the full local date, weekend badge, completion summary, and per-prompt local send time, method, and status.
+
 ## [0.2.4] - 2026-11-22
 
 ### Fixed

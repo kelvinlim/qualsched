@@ -90,7 +90,7 @@ export const getAcquisition: (
   definitive: true,
   prerequisite: "",
   limitations: [],
-  exportMode: "columns",
+  exportMode: "distribution-stats",
   excluded: {
     preview: 0,
     test: 0,

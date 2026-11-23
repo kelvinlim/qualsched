@@ -2,9 +2,13 @@
   import { untrack } from "svelte";
   import * as api from "@qualsched/api";
   import {
+    WEEKDAY_HEADERS,
+    dayDetail,
     dayGlyph,
     dayLabel,
+    groupByWeeks,
     heatOf,
+    promptStatusLabel,
     rowWindow,
     statusPatchApplies,
     statusWriteIsCurrent,
@@ -18,6 +22,7 @@
   import { acquisitionStatus } from "../lib/acquisition-poll";
   import {
     errorMessage,
+    type AcquisitionDay,
     type AcquisitionReport,
     type AcquisitionRow,
   } from "../lib/types";
@@ -31,6 +36,12 @@
   let activeOnly = $state(true);
   let span = $state<"7" | "study">("7");
   let marking = $state("");
+  let hovered = $state<{
+    day: AcquisitionDay;
+    left: number;
+    top: number;
+    below: boolean;
+  } | null>(null);
   /** Bumped only when the account or profile changes, not when another row is toggled. */
   let contextGeneration = 0;
   /** Never reset, so a cleared map cannot hand ticket 1 to a new save. */
@@ -39,26 +50,40 @@
   const markTickets = new Map<string, number>();
 
   const shown = $derived(report ? visibleRows(report.rows, activeOnly) : []);
+  const hoveredDetail = $derived(hovered ? dayDetail(hovered.day) : null);
 
   $effect(() => {
-    const accountId = app.selectedAccountId;
-    const projectId = app.selectedProjectId;
-    // load() increments loadOp before its first await. Reading that state here
-    // would subscribe this effect to it, re-run the effect, abort the request,
-    // and reset the timer on every pass. Only the account and profile ids
-    // are dependencies.
+    void app.selectedAccountId;
+    void app.selectedProjectId;
+    // Never start downloading on open or profile switch; the researcher clicks Load.
     untrack(() => {
+      loadController?.abort();
+      loadController = null;
+      loading = false;
       report = null;
       error = "";
       stageLine = "";
+      hovered = null;
       marking = "";
       markTickets.clear();
       contextGeneration += 1;
-      if (accountId && projectId) void load(accountId, projectId);
     });
     return () => {
       report = null;
+      hovered = null;
       loadController?.abort();
+    };
+  });
+
+  $effect(() => {
+    const clear = () => {
+      hovered = null;
+    };
+    window.addEventListener("scroll", clear, true);
+    window.addEventListener("resize", clear);
+    return () => {
+      window.removeEventListener("scroll", clear, true);
+      window.removeEventListener("resize", clear);
     };
   });
 
@@ -71,6 +96,7 @@
     loading = true;
     error = "";
     stageLine = "";
+    hovered = null;
     try {
       const next = await api.getAcquisition(
         accountId,
@@ -173,27 +199,67 @@
     }
   }
 
+  function openDayHover(event: MouseEvent | FocusEvent, day: AcquisitionDay) {
+    const target = event.currentTarget;
+    if (!(target instanceof HTMLElement)) return;
+    const rect = target.getBoundingClientRect();
+    const width = 260;
+    const margin = 12;
+    const vw = typeof window !== "undefined" ? window.innerWidth : 1024;
+    const left = Math.min(
+      Math.max(rect.left + rect.width / 2, width / 2 + margin),
+      vw - width / 2 - margin,
+    );
+    const below = rect.top < 190;
+    const top = below ? rect.bottom + 8 : rect.top - 8;
+    hovered = { day, left, top, below };
+  }
+
+  function closeDayHover(day: AcquisitionDay) {
+    if (hovered?.day === day) hovered = null;
+  }
+
   function zoneNote(row: AcquisitionRow): string {
     if (row.timezoneSource === "profile") return `${row.timezone} (survey profile default)`;
     if (row.timezoneSource === "invalid") return "timezone not readable";
     if (row.timezoneSource === "missing") return "no timezone";
     return row.timezone;
   }
+
+  function hasNonZeroExclusions(rep: AcquisitionReport): boolean {
+    const ex = rep.excluded;
+    return (
+      ex.preview +
+        ex.test +
+        ex.synthetic +
+        ex.spam +
+        ex.unfinished +
+        ex.otherStatus +
+        ex.anonymous +
+        ex.unmatchedRecipient +
+        ex.conflict +
+        ex.duplicateIds +
+        ex.unjoinedInvitations >
+      0
+    );
+  }
 </script>
 
 <h1>Acquisition</h1>
 <p class="subtitle">
-  Each block is one local day. The number inside is completed surveys, and the count beside
-  the row is completed/expected for the days on screen. Marking someone inactive only hides
-  the row here. It does not cancel invitations, delete responses, or change who can be scheduled.
+  Each box is one local day, arranged Monday–Sunday and stacked week over week so weekday
+  and weekend patterns align vertically. Hover or focus a box for send times and statuses.
+  Marking someone inactive only hides the row here.
 </p>
 
 <div class="row" style="margin-bottom: 0.85rem;">
   <button class="primary" onclick={() => load()} disabled={loading || !app.hasProject}>
     {#if loading}
       <BusyMark operation={`acquisition-${loadOp}`} label="Loading" />
-    {:else}
+    {:else if report}
       Refresh
+    {:else}
+      Load
     {/if}
   </button>
   <label>
@@ -212,7 +278,7 @@
       Entire study
     </button>
   </div>
-  </div>
+</div>
 
 {#if loading && stageLine}
   <p class="meta" aria-live="polite">{stageLine}</p>
@@ -227,13 +293,10 @@
   {#each report.limitations as note (note)}
     <p class="note">{note}</p>
   {/each}
-  {#if !report.definitive}
+  {#if !report.definitive && hasNonZeroExclusions(report)}
     <p class="note">
-      Counts that say "at least" omit responses that could not be matched safely.
-      Excluded: {report.excluded.preview} preview, {report.excluded.test} test,
-      {report.excluded.synthetic} synthetic, {report.excluded.spam} spam,
-      {report.excluded.anonymous} without a recipient id,
-      {report.excluded.unmatchedRecipient} for someone not on this list.
+      Counts that say "at least" omit items that could not be matched safely.
+      Unjoined invitations: {report.excluded.unjoinedInvitations}.
     </p>
   {/if}
 {/if}
@@ -242,21 +305,25 @@
   <div class="empty">
     <BusyMark operation={`acquisition-${loadOp}`} label="Loading completion counts" />
   </div>
+{:else if !report && !error}
+  <div class="empty">Nothing loaded yet — press Load.</div>
 {:else if report && shown.length === 0}
   <div class="empty">
-    {report.rows.length === 0 ? "No participants on this mailing list." : "No active participants. Turn off Active only to see everyone."}
+    {report.rows.length === 0
+      ? "No participants on this mailing list."
+      : "No active participants. Turn off Active only to see everyone."}
   </div>
 {:else if report}
   <div class="table-wrap">
     <table class="acquisition">
       <caption class="sr-only">
-        Completed surveys against invitations still listed. Days use each participant's timezone.
+        Completed surveys against invitations still listed, grouped into Monday–Sunday weeks in each participant's timezone.
       </caption>
       <thead>
         <tr>
           <th>Participant</th>
           <th>Status</th>
-          <th>{span === "7" ? "Last 7 local days" : "Study days"}</th>
+          <th>{span === "7" ? "Last 7 local days (Mon–Sun)" : "Study weeks (Mon–Sun)"}</th>
           <th>On screen</th>
           <th>To date</th>
         </tr>
@@ -264,6 +331,7 @@
       <tbody>
         {#each shown as row (row.contactId)}
           {@const days = rowWindow(row, span)}
+          {@const weeks = groupByWeeks(days)}
           {@const window = windowSummary(days)}
           <tr>
             <td>
@@ -281,17 +349,38 @@
               </button>
             </td>
             <td>
-              <div class="heats" class:study={span === "study"}>
-                {#each days as day (day.date)}
-                  <span
-                    class="heat heat-{heatOf(day)}"
-                    role="img"
-                    aria-label={dayLabel(day)}
-                    title={dayLabel(day)}
-                  >
-                    <span class="fill" aria-hidden="true"></span>
-                    <span class="glyph">{dayGlyph(day)}</span>
-                  </span>
+              <div class="week-grid">
+                <div class="week-head" aria-hidden="true">
+                  <span></span>
+                  {#each WEEKDAY_HEADERS as dow, col (col)}
+                    <span class="week-dow" class:weekend={dow.weekend} title={dow.full}>
+                      {dow.short}
+                    </span>
+                  {/each}
+                </div>
+                {#each weeks as week (week.monday)}
+                  <div class="week-row">
+                    <span class="week-label">{week.label}</span>
+                    {#each week.cells as cell, col (col)}
+                      {#if cell === null}
+                        <span class="heat-pad" class:weekend={col >= 5} aria-hidden="true"></span>
+                      {:else}
+                        <button
+                          type="button"
+                          class="heat heat-{heatOf(cell)}"
+                          class:weekend={col >= 5}
+                          aria-label={dayLabel(cell)}
+                          onmouseenter={(e) => openDayHover(e, cell)}
+                          onmouseleave={() => closeDayHover(cell)}
+                          onfocus={(e) => openDayHover(e, cell)}
+                          onblur={() => closeDayHover(cell)}
+                        >
+                          <span class="fill" aria-hidden="true"></span>
+                          <span class="glyph">{dayGlyph(cell)}</span>
+                        </button>
+                      {/if}
+                    {/each}
+                  </div>
                 {/each}
               </div>
             </td>
@@ -303,5 +392,38 @@
         {/each}
       </tbody>
     </table>
+  </div>
+{/if}
+
+{#if hovered && hoveredDetail}
+  <div
+    class="heat-popover"
+    class:below={hovered.below}
+    role="tooltip"
+    style="left: {hovered.left}px; top: {hovered.top}px;"
+  >
+    <div class="heat-popover-head">
+      <strong>{hoveredDetail.heading}</strong>
+      {#if hoveredDetail.isWeekend}
+        <span class="badge muted">Weekend</span>
+      {/if}
+    </div>
+    <div class="heat-popover-summary">{hoveredDetail.summary}</div>
+    {#if hoveredDetail.laterNote}
+      <div class="heat-popover-later">{hoveredDetail.laterNote}</div>
+    {/if}
+    {#if hoveredDetail.prompts.length > 0}
+      <ul class="heat-popover-prompts">
+        {#each hoveredDetail.prompts as prompt, idx (idx)}
+          <li>
+            <span class="mono">{prompt.sendLocal}</span>
+            <span class="prompt-method">{prompt.method === "email" ? "Email" : "SMS"}</span>
+            <span class="prompt-status status-{prompt.status}">
+              {promptStatusLabel(prompt.status)}
+            </span>
+          </li>
+        {/each}
+      </ul>
+    {/if}
   </div>
 {/if}
