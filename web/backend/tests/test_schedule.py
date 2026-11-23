@@ -384,3 +384,48 @@ def test_execute_400_when_library_missing(ctx, monkeypatch):
     r = http.post(EXECUTE, json={"items": [], "skippedContacts": [], "skippedSlots": [], "warnings": []})
     assert r.status_code == 400
     assert "library" in r.json()["detail"]["message"].lower()
+
+
+def test_schedule_uses_profile_directory_and_separate_sms_email_libraries(ctx, monkeypatch):
+    http, _, _ = ctx
+    account = {**ACCOUNT, "defaultDirectory": "POOL_abc", "libraryId": ""}
+    project = {
+        **PROJECT,
+        "directoryId": "POOL_study",
+        "messageLibraryId": "GR_sms",
+        "messageEmailLibraryId": "GR_email",
+    }
+    assert http.post("/api/accounts", json=account).status_code == 200
+    assert http.post(f"/api/accounts/{AID}/projects", json=project).status_code == 200
+    assert http.put(f"/api/accounts/{AID}/token", json={"token": SECRET}).status_code == 200
+
+    fake = ScheduleFake()
+    sms_contact = _eligible_raw("CID_sms", firstName="Sms", lastName="User")
+    sms_contact["embeddedData"]["NumDays"] = "1"
+    sms_contact["embeddedData"]["TimeSlots"] = "800"
+    email_contact = _eligible_raw("CID_email", firstName="Email", lastName="User")
+    email_contact["embeddedData"]["ContactMethod"] = "email"
+    email_contact["embeddedData"]["NumDays"] = "1"
+    email_contact["embeddedData"]["TimeSlots"] = "1200"
+    fake.add(sms_contact)
+    fake.add(email_contact)
+    _install(monkeypatch, fake)
+
+    prev = http.post(PREVIEW)
+    assert prev.status_code == 200, prev.text
+    plan = prev.json()
+    assert len(plan["items"]) == 2
+
+    sent = http.post(EXECUTE, json=plan)
+    assert sent.status_code == 200, sent.text
+    report = sent.json()
+    assert report["scheduled"] == 2
+    assert report["failed"] == []
+
+    assert (
+        "get_elements",
+        "directories/POOL_study/mailinglists/CG_list/contacts?includeEmbedded=true",
+    ) in fake.calls
+    assert all("POOL_abc" not in c[1] for c in fake.calls)
+    assert ("get", "libraries/GR_sms/messages/MS_sms") in fake.calls
+    assert ("get", "libraries/GR_email/messages/MS_email") in fake.calls

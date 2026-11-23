@@ -74,6 +74,33 @@ def list_surveys(
     return out
 
 
+def _mailing_list_item(e: dict, *, directory_id: str, directory_name: str = "") -> MailingListInfo | None:
+    mid = e.get("mailingListId")
+    if not mid:
+        return None
+    count = e.get("contactCount")
+    return MailingListInfo(
+        id=mid,
+        name=e.get("name") or "(unnamed)",
+        contactCount=int(count) if isinstance(count, (int, float)) else None,
+        directoryId=directory_id,
+        directoryName=directory_name,
+    )
+
+
+def _message_item(e: dict, *, library_id: str, library_name: str = "") -> MessageInfo | None:
+    mid = e.get("id")
+    if not mid:
+        return None
+    return MessageInfo(
+        id=mid,
+        description=e.get("description") or "(no description)",
+        category=e.get("category"),
+        libraryId=library_id,
+        libraryName=library_name,
+    )
+
+
 @router.get("/mailing-lists", response_model=list[MailingListInfo])
 def list_mailing_lists(
     account_id: str,
@@ -82,7 +109,34 @@ def list_mailing_lists(
     db: Session = Depends(get_db),
 ):
     account = get_account(db, user, account_id)
-    directory_id = directoryId or account.default_directory
+    requested = directoryId.strip()
+    if requested == "*":
+        try:
+            with qualtrics_for(account) as client:
+                dirs = client.get_elements("directories")
+                out: list[MailingListInfo] = []
+                for d in dirs:
+                    did = (d.get("directoryId") or "").strip()
+                    if not did:
+                        continue
+                    dname = d.get("name") or "(unnamed)"
+                    try:
+                        elements = client.get_elements(
+                            f"directories/{did}/mailinglists?includeCount=true"
+                        )
+                    except QualtricsError as exc:
+                        if exc.status in (401, 403, 404):
+                            continue
+                        raise
+                    for e in elements:
+                        item = _mailing_list_item(e, directory_id=did, directory_name=dname)
+                        if item is not None:
+                            out.append(item)
+                return out
+        except QualtricsError as exc:
+            raise exc.as_http() from exc
+
+    directory_id = requested or account.default_directory.strip()
     if not directory_id:
         raise app_error(400, "Invalid", "Set the account's contact directory first.")
     try:
@@ -94,44 +148,58 @@ def list_mailing_lists(
         raise exc.as_http() from exc
     out = []
     for e in elements:
-        mid = e.get("mailingListId")
-        if not mid:
-            continue
-        count = e.get("contactCount")
-        out.append(
-            MailingListInfo(
-                id=mid,
-                name=e.get("name") or "(unnamed)",
-                contactCount=int(count) if isinstance(count, (int, float)) else None,
-            )
-        )
+        item = _mailing_list_item(e, directory_id=directory_id)
+        if item is not None:
+            out.append(item)
     return out
 
 
 @router.get("/messages", response_model=list[MessageInfo])
 def list_messages(
-    account_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    account_id: str,
+    libraryId: str = "",
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     account = get_account(db, user, account_id)
-    if not account.library_id:
+    requested = libraryId.strip()
+    if requested == "*":
+        try:
+            with qualtrics_for(account) as client:
+                libs = client.get_elements("libraries")
+                out: list[MessageInfo] = []
+                for lib in libs:
+                    lid = (lib.get("libraryId") or lib.get("id") or "").strip()
+                    if not lid:
+                        continue
+                    lname = lib.get("libraryName") or lib.get("name") or "(unnamed)"
+                    try:
+                        elements = client.get_elements(f"libraries/{lid}/messages")
+                    except QualtricsError as exc:
+                        if exc.status in (401, 403, 404):
+                            continue
+                        raise
+                    for e in elements:
+                        item = _message_item(e, library_id=lid, library_name=lname)
+                        if item is not None:
+                            out.append(item)
+                return out
+        except QualtricsError as exc:
+            raise exc.as_http() from exc
+
+    library_id = requested or account.library_id.strip()
+    if not library_id:
         raise app_error(400, "Invalid", "Set the account's message library ID first.")
     try:
         with qualtrics_for(account) as client:
-            elements = client.get_elements(f"libraries/{account.library_id}/messages")
+            elements = client.get_elements(f"libraries/{library_id}/messages")
     except QualtricsError as exc:
         raise exc.as_http() from exc
     out = []
     for e in elements:
-        mid = e.get("id")
-        if not mid:
-            continue
-        out.append(
-            MessageInfo(
-                id=mid,
-                description=e.get("description") or "(no description)",
-                category=e.get("category"),
-            )
-        )
+        item = _message_item(e, library_id=library_id)
+        if item is not None:
+            out.append(item)
     return out
 
 
@@ -139,15 +207,17 @@ def list_messages(
 def get_message_text(
     account_id: str,
     message_id: str,
+    libraryId: str = "",
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> str:
     account = get_account(db, user, account_id)
-    if not account.library_id:
+    library_id = libraryId.strip() or account.library_id.strip()
+    if not library_id:
         raise app_error(400, "Invalid", "Set the account's message library ID first.")
     try:
         with qualtrics_for(account) as client:
-            body = client.get(f"libraries/{account.library_id}/messages/{message_id}")
+            body = client.get(f"libraries/{library_id}/messages/{message_id}")
     except QualtricsError as exc:
         raise exc.as_http() from exc
     result = body.get("result") if isinstance(body, dict) else None
@@ -157,6 +227,6 @@ def get_message_text(
         raise app_error(
             404,
             "NotFound",
-            f"message {message_id} in library {account.library_id} has no 'en' text",
+            f"message {message_id} in library {library_id} has no 'en' text",
         )
     return text

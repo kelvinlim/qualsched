@@ -325,7 +325,9 @@ def list_views(
     account: QualtricsAccount,
     profile: SurveyProfile,
 ) -> list[ContactView]:
-    raw = list_raw(client, account.default_directory, profile.mailing_list_id)
+    from app.accounts import effective_directory
+
+    raw = list_raw(client, effective_directory(account, profile), profile.mailing_list_id)
     return [to_view(c, profile) for c in raw]
 
 
@@ -336,10 +338,12 @@ def create_view(
     core: dict[str, str],
     embedded: dict[str, str],
 ) -> ContactView:
+    from app.accounts import effective_directory
+
     project = profile_to_project(profile)
     created = create_contact(
         client,
-        account.default_directory,
+        effective_directory(account, profile),
         profile.mailing_list_id,
         core,
         embedded,
@@ -356,12 +360,15 @@ def update_view(
     core: dict[str, str],
     fields: dict[str, str],
 ) -> ContactView:
-    raw = list_raw(client, account.default_directory, profile.mailing_list_id)
+    from app.accounts import effective_directory
+
+    directory_id = effective_directory(account, profile)
+    raw = list_raw(client, directory_id, profile.mailing_list_id)
     contact = find_in_list(raw, contact_id)
     changed = sorted(list(core.keys()) + list(fields.keys()))
     updated = update_contact(
         client,
-        account.default_directory,
+        directory_id,
         profile.mailing_list_id,
         contact,
         core,
@@ -378,7 +385,10 @@ def delete_view(
     profile: SurveyProfile,
     contact_id: str,
 ) -> RemovedContact:
-    raw = list_raw(client, account.default_directory, profile.mailing_list_id)
+    from app.accounts import effective_directory
+
+    directory_id = effective_directory(account, profile)
+    raw = list_raw(client, directory_id, profile.mailing_list_id)
     contact = find_in_list(raw, contact_id)
     name = display_name(contact)
     # Late import: distributions talks to this module for mailing-list lookups.
@@ -396,7 +406,7 @@ def delete_view(
             "with no way to trace them.",
         )
     remove_from_mailing_list(
-        client, account.default_directory, profile.mailing_list_id, contact_id
+        client, directory_id, profile.mailing_list_id, contact_id
     )
     return RemovedContact(contactName=name, cancelled=report.deleted)
 
@@ -407,7 +417,10 @@ def apply_defaults(
     profile: SurveyProfile,
     contact_ids: list[str],
 ) -> list[ContactView]:
-    raw = list_raw(client, account.default_directory, profile.mailing_list_id)
+    from app.accounts import effective_directory
+
+    directory_id = effective_directory(account, profile)
+    raw = list_raw(client, directory_id, profile.mailing_list_id)
     wanted = set(contact_ids)
     seed = embedded_defaults_pairs(profile_to_project(profile).embeddedDefaults)
     selected = [c for c in raw if contact_id_of(c) in wanted]
@@ -415,7 +428,7 @@ def apply_defaults(
     for i, contact in enumerate(selected):
         updated = update_contact(
             client,
-            account.default_directory,
+            directory_id,
             profile.mailing_list_id,
             contact,
             {},

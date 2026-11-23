@@ -125,5 +125,55 @@ def test_import_confirm_into_existing_account_adds_profile_only(ctx):
     assert account["libraryId"] == "GR_existing"
     assert [p["name"] for p in account["projects"]] == ["Sleep"]
     assert account["projects"][0]["surveyId"] == "SV_1"
+    assert account["projects"][0]["directoryId"] == "POOL_x"
+    assert account["projects"][0]["messageLibraryId"] == "GR_lib"
+    assert account["projects"][0]["messageEmailLibraryId"] == "GR_lib"
     assert "must-not-overwrite-existing-token" not in r.text
     assert client.get(f"/api/accounts/{existing['id']}/has-token").json() is True
+
+
+def test_export_and_parse_preserve_profile_container_overrides():
+    import yaml
+    from app.schemas import Account, Project
+
+    account = Account(
+        id="11111111-1111-1111-1111-111111111111",
+        name="UMN",
+        dataCenter="yul1",
+        defaultDirectory="POOL_default",
+        libraryId="GR_default",
+    )
+    project = Project(
+        id="22222222-2222-2222-2222-222222222222",
+        name="EMA",
+        surveyId="SV_1",
+        directoryId="POOL_study",
+        messageId="MS_sms",
+        messageLibraryId="GR_sms",
+        messageIdEmail="MS_email",
+        messageEmailLibraryId="GR_email",
+        mailingListId="CG_1",
+    )
+
+    exported = build_legacy_yaml(account, project)
+    parsed_yaml = yaml.safe_load(exported)
+    assert parsed_yaml["account"]["DEFAULT_DIRECTORY"] == "POOL_study"
+    assert parsed_yaml["account"]["LIBRARY_ID"] == "GR_sms"
+    assert parsed_yaml["project"]["DIRECTORY_ID"] == "POOL_study"
+    assert parsed_yaml["project"]["MESSAGE_LIBRARY_ID"] == "GR_sms"
+    assert parsed_yaml["project"]["MESSAGE_EMAIL_LIBRARY_ID"] == "GR_email"
+
+    preview = parse_config(exported, "exported.yaml")
+    assert preview.project.directoryId == "POOL_study"
+    assert preview.project.messageLibraryId == "GR_sms"
+    assert preview.project.messageEmailLibraryId == "GR_email"
+
+    inherited = project.model_copy(
+        update={"directoryId": "", "messageLibraryId": "", "messageEmailLibraryId": ""}
+    )
+    plain_yaml = yaml.safe_load(build_legacy_yaml(account, inherited))
+    assert plain_yaml["account"]["DEFAULT_DIRECTORY"] == "POOL_default"
+    assert plain_yaml["account"]["LIBRARY_ID"] == "GR_default"
+    assert "DIRECTORY_ID" not in plain_yaml["project"]
+    assert "MESSAGE_LIBRARY_ID" not in plain_yaml["project"]
+    assert "MESSAGE_EMAIL_LIBRARY_ID" not in plain_yaml["project"]

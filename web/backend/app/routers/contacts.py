@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.accounts import account_token, get_account, qualtrics_for
+from app.accounts import account_token, effective_directory, get_account, qualtrics_for
 from app.contacts import apply_defaults, create_view, delete_view, list_views, update_view
 from app.db import get_db
 from app.errors import app_error
@@ -33,11 +33,11 @@ def _context(
         raise app_error(404, "NotFound", "that account or project no longer exists")
     # Token / data-center first so a missing token is not reported as an empty list.
     account_token(account)
-    if not account.default_directory.strip():
+    if not effective_directory(account, profile):
         raise app_error(
             400,
             "Invalid",
-            "Set the account's contact directory first. Contacts cannot be loaded without it.",
+            "Set a contact directory on the account or survey profile first. Contacts cannot be loaded without it.",
         )
     if not profile.mailing_list_id.strip():
         raise app_error(

@@ -61,7 +61,11 @@ export const mailingLists = (accountId: string, directoryId: string, force = fal
     force,
   );
 
-export const messages = (accountId: string, force = false) =>
-  cache.get<MessageInfo[]>(`${accountId}:messages`, () => api.listMessages(accountId), force);
+export const messages = (accountId: string, libraryId = "", force = false) =>
+  cache.get<MessageInfo[]>(
+    `${accountId}:messages:${libraryId || "default"}`,
+    () => api.listMessages(accountId, libraryId || undefined),
+    force,
+  );
 
 export const invalidateAccount = (accountId: string) => cache.invalidateAccount(accountId);

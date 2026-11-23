@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app import acquisition as acquisition_mod
-from app.accounts import account_token, get_account, qualtrics_for
+from app.accounts import account_token, effective_directory, get_account, qualtrics_for
 from app.acquisition import (
     _STATUS_CB,
     AcquisitionParseError,
@@ -53,7 +53,7 @@ def _profile(db: Session, user: User, account_id: str, project_id: str):
     if profile is None:
         raise app_error(404, "NotFound", "that account or project no longer exists")
     account_token(account)
-    if not account.default_directory.strip() or not profile.mailing_list_id.strip():
+    if not effective_directory(account, profile) or not profile.mailing_list_id.strip():
         raise app_error(
             400,
             "Invalid",
@@ -79,6 +79,7 @@ class _ProfileSnapshot:
     def __init__(self, profile) -> None:
         self.id = profile.id
         self.survey_id = profile.survey_id
+        self.directory_id = profile.directory_id
         self.mailing_list_id = profile.mailing_list_id
         self.timezone = profile.timezone or ""
         copies = profile.survey_copies or []

@@ -82,17 +82,13 @@ pub async fn list_distributions(
     let now = Utc::now();
     let mut rows = distributions::list_distributions(&client, &project, method, now).await?;
 
-    let raw = contacts::list_contacts(
-        &client,
-        &account.default_directory,
-        &project.mailing_list_id,
-    )
-    .await?;
+    let directory_id = project.effective_directory(&account);
+    let raw = contacts::list_contacts(&client, directory_id, &project.mailing_list_id).await?;
     let mut recipients: HashMap<String, Recipient> = HashMap::new();
     for contact in &raw {
         if let Ok(lookup) = contacts::resolve_contact_lookup_id(
             &client,
-            &account.default_directory,
+            directory_id,
             &project.mailing_list_id,
             contact,
         )
@@ -244,12 +240,8 @@ pub async fn delete_unsent_for_contact(
     };
     let client = state.client(account_id).await?;
 
-    let raw = contacts::list_contacts(
-        &client,
-        &account.default_directory,
-        &project.mailing_list_id,
-    )
-    .await?;
+    let directory_id = project.effective_directory(&account);
+    let raw = contacts::list_contacts(&client, directory_id, &project.mailing_list_id).await?;
     let contact = raw
         .iter()
         .find(|c| c.id() == Some(contact_id.as_str()))
@@ -258,7 +250,7 @@ pub async fn delete_unsent_for_contact(
         })?;
 
     let DeleteReport { deleted, failed } =
-        cancel_pending_for_contact(&client, &project, &account.default_directory, contact).await?;
+        cancel_pending_for_contact(&client, &project, directory_id, contact).await?;
 
     let mut updates = BTreeMap::new();
     updates.insert("DeleteUnsent".to_string(), "0".to_string());
@@ -269,7 +261,7 @@ pub async fn delete_unsent_for_contact(
     }
     contacts::update_contact(
         &client,
-        &account.default_directory,
+        directory_id,
         &project.mailing_list_id,
         contact,
         &BTreeMap::new(),

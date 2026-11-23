@@ -76,9 +76,15 @@ export const listMailingLists: (
   accountId: string,
   directoryId: string,
 ) => Promise<MailingListInfo[]> = async () => [];
-export const listMessages: (accountId: string) => Promise<MessageInfo[]> = async () => [];
-export const getMessageText: (accountId: string, messageId: string) => Promise<string> =
-  async () => "";
+export const listMessages: (
+  accountId: string,
+  libraryId?: string,
+) => Promise<MessageInfo[]> = async () => [];
+export const getMessageText: (
+  accountId: string,
+  messageId: string,
+  libraryId?: string,
+) => Promise<string> = async () => "";
 
 export const getAcquisition: (
   accountId: string,

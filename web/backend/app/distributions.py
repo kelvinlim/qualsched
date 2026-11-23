@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import HTTPException
 
 from app import contacts as contacts_svc
+from app.accounts import effective_directory
 from app.errors import app_error
 from app.models import QualtricsAccount, SurveyProfile
 from app.qualtrics import QualtricsClient, QualtricsError
@@ -40,11 +41,11 @@ class SurveyRef:
 
 def require_distribution_ids(account: QualtricsAccount, profile: SurveyProfile) -> None:
     """Missing wiring must be a 400, not an empty table that looks like no invitations."""
-    if not account.default_directory.strip():
+    if not effective_directory(account, profile):
         raise app_error(
             400,
             "Invalid",
-            "Set the account's contact directory first. "
+            "Set a contact directory on the account or survey profile first. "
             "Invitations cannot be listed without it.",
         )
     if not profile.mailing_list_id.strip():
@@ -200,12 +201,13 @@ def _recipients(
 ) -> dict[str, Recipient]:
     project = profile_to_project(profile)
     default_zone = project.embeddedDefaults.timeZone
-    raw = contacts_svc.list_raw(client, account.default_directory, profile.mailing_list_id)
+    directory_id = effective_directory(account, profile)
+    raw = contacts_svc.list_raw(client, directory_id, profile.mailing_list_id)
     found: dict[str, Recipient] = {}
     for contact in raw:
         try:
             lookup = contacts_svc.resolve_contact_lookup_id(
-                client, account.default_directory, profile.mailing_list_id, contact
+                client, directory_id, profile.mailing_list_id, contact
             )
         except (QualtricsError, HTTPException):
             continue
@@ -299,7 +301,7 @@ def cancel_pending_for_contact(
     now = now or utcnow()
     method = contact_method_of(contact)
     lookup_id = contacts_svc.resolve_contact_lookup_id(
-        client, account.default_directory, profile.mailing_list_id, contact
+        client, effective_directory(account, profile), profile.mailing_list_id, contact
     )
     rows = list_raw_rows(client, profile, method, now)
     targets = [row for row in rows if row.contactLookupId == lookup_id and row.unsent]
@@ -323,7 +325,8 @@ def delete_unsent_for_contact(
     *,
     now: datetime | None = None,
 ) -> DeleteReport:
-    raw = contacts_svc.list_raw(client, account.default_directory, profile.mailing_list_id)
+    directory_id = effective_directory(account, profile)
+    raw = contacts_svc.list_raw(client, directory_id, profile.mailing_list_id)
     contact = contacts_svc.find_in_list(raw, contact_id)
     report = cancel_pending_for_contact(client, account, profile, contact, now=now)
 
@@ -334,7 +337,7 @@ def delete_unsent_for_contact(
         updates["SurveysScheduled"] = "0"
     contacts_svc.update_contact(
         client,
-        account.default_directory,
+        directory_id,
         profile.mailing_list_id,
         contact,
         {},

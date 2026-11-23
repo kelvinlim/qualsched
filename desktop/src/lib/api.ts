@@ -85,11 +85,18 @@ export const listLibraries = (accountId: string) =>
 export const listMailingLists = (accountId: string, directoryId: string) =>
   invoke<MailingListInfo[]>("list_mailing_lists", { accountId, directoryId });
 
-export const listMessages = (accountId: string) =>
-  invoke<MessageInfo[]>("list_messages", { accountId });
+export const listMessages = (accountId: string, libraryId?: string) =>
+  invoke<MessageInfo[]>("list_messages", {
+    accountId,
+    libraryId: libraryId || null,
+  });
 
-export const getMessageText = (accountId: string, messageId: string) =>
-  invoke<string>("get_message_text", { accountId, messageId });
+export const getMessageText = (accountId: string, messageId: string, libraryId?: string) =>
+  invoke<string>("get_message_text", {
+    accountId,
+    messageId,
+    libraryId: libraryId || null,
+  });
 
 // --- contacts -------------------------------------------------------------
 

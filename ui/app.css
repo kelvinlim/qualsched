@@ -981,3 +981,22 @@ button.heat:focus-visible {
   color: var(--muted);
   margin: 0.35rem 0;
 }
+
+.picker-controls {
+  display: grid;
+  grid-template-columns: minmax(11rem, 1fr) minmax(11rem, 1fr);
+  gap: 0.45rem;
+  margin-bottom: 0.45rem;
+}
+
+@media (max-width: 700px) {
+  .picker-controls {
+    grid-template-columns: 1fr;
+  }
+}
+
+.picker-override-note button.link {
+  padding: 0;
+  margin-left: 0.25rem;
+  font-size: inherit;
+}

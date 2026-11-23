@@ -112,8 +112,12 @@ pub fn parse_config(yaml_text: &str, source_name: &str) -> AppResult<Imported> {
         // filename to go on.
         name: str_at(project_section, "NAME").unwrap_or_else(|| suggest_project_name(source_name)),
         survey_id: str_at(project_section, "SURVEY_ID").unwrap_or_default(),
+        directory_id: str_at(project_section, "DIRECTORY_ID").unwrap_or_default(),
         message_id: str_at(project_section, "MESSAGE_ID").unwrap_or_default(),
+        message_library_id: str_at(project_section, "MESSAGE_LIBRARY_ID").unwrap_or_default(),
         message_id_email,
+        message_email_library_id: str_at(project_section, "MESSAGE_EMAIL_LIBRARY_ID")
+            .unwrap_or_default(),
         mailing_list_id: str_at(project_section, "MAILING_LIST_ID").unwrap_or_default(),
         timezone,
         minutes_expire,
@@ -190,6 +194,15 @@ struct LegacyProject<'a> {
     // The correct spelling, never the CLI's MINUTES_EXP.
     #[serde(rename = "MINUTES_EXPIRE")]
     minutes_expire: u32,
+    #[serde(rename = "DIRECTORY_ID", skip_serializing_if = "str::is_empty")]
+    directory_id: &'a str,
+    #[serde(rename = "MESSAGE_LIBRARY_ID", skip_serializing_if = "str::is_empty")]
+    message_library_id: &'a str,
+    #[serde(
+        rename = "MESSAGE_EMAIL_LIBRARY_ID",
+        skip_serializing_if = "str::is_empty"
+    )]
+    message_email_library_id: &'a str,
 }
 
 #[derive(serde::Serialize)]
@@ -234,12 +247,14 @@ struct LegacyEmailHeader<'a> {
 /// The API token is deliberately absent: it lives in the OS credential store, and the
 /// CLI kept it in a separate dotenv file for the same reason.
 pub fn build_legacy_yaml(account: &Account, project: &Project) -> AppResult<String> {
+    let eff_dir = project.effective_directory(account);
+    let eff_lib = project.effective_library(account, crate::scheduler::Method::Sms);
     let e = &project.embedded_defaults;
     let file = LegacyFile {
         account: LegacyAccount {
             data_center: &account.data_center,
-            default_directory: &account.default_directory,
-            library_id: &account.library_id,
+            default_directory: eff_dir,
+            library_id: eff_lib,
             verify: account.verify_tls,
         },
         project: LegacyProject {
@@ -250,6 +265,9 @@ pub fn build_legacy_yaml(account: &Account, project: &Project) -> AppResult<Stri
             mailing_list_id: &project.mailing_list_id,
             timezone: &project.timezone,
             minutes_expire: project.minutes_expire,
+            directory_id: project.directory_id.trim(),
+            message_library_id: project.message_library_id.trim(),
+            message_email_library_id: project.message_email_library_id.trim(),
         },
         embedded_data: LegacyEmbedded {
             start_date: &e.start_date,
@@ -651,6 +669,9 @@ project:
             message_id: "MS_sms".into(),
             message_id_email: "MS_email".into(),
             mailing_list_id: "CG_9zzzzzzzzzzzzzz".into(),
+            directory_id: String::new(),
+            message_library_id: String::new(),
+            message_email_library_id: String::new(),
             timezone: "America/New_York".into(),
             minutes_expire: 45,
             email_header: EmailHeader {
@@ -756,5 +777,49 @@ project:
         assert_eq!(parse_token_file(text).as_deref(), Some("abc123"));
         assert_eq!(parse_token_file("#QUALTRICS_APITOKEN=x\n"), None);
         assert_eq!(parse_token_file("QUALTRICS_APITOKEN=\n"), None);
+    }
+
+    #[test]
+    fn export_round_trips_profile_container_overrides() {
+        let (account, mut project) = exportable();
+        project.directory_id = "POOL_override".into();
+        project.message_library_id = "GR_sms_override".into();
+        project.message_email_library_id = "GR_email_override".into();
+
+        let yaml = build_legacy_yaml(&account, &project).unwrap();
+        let root: Value = serde_yaml::from_str(&yaml).unwrap();
+        assert_eq!(
+            str_at(root.get("account"), "DEFAULT_DIRECTORY").as_deref(),
+            Some("POOL_override")
+        );
+        assert_eq!(
+            str_at(root.get("account"), "LIBRARY_ID").as_deref(),
+            Some("GR_sms_override")
+        );
+        assert_eq!(
+            str_at(root.get("project"), "DIRECTORY_ID").as_deref(),
+            Some("POOL_override")
+        );
+        assert_eq!(
+            str_at(root.get("project"), "MESSAGE_LIBRARY_ID").as_deref(),
+            Some("GR_sms_override")
+        );
+        assert_eq!(
+            str_at(root.get("project"), "MESSAGE_EMAIL_LIBRARY_ID").as_deref(),
+            Some("GR_email_override")
+        );
+
+        let parsed = parse_config(&yaml, "exported.yaml").unwrap();
+        assert_eq!(parsed.project.directory_id, "POOL_override");
+        assert_eq!(parsed.project.message_library_id, "GR_sms_override");
+        assert_eq!(parsed.project.message_email_library_id, "GR_email_override");
+
+        let (_acc, plain_project) = exportable();
+        let plain_yaml = build_legacy_yaml(&account, &plain_project).unwrap();
+        let plain_root: Value = serde_yaml::from_str(&plain_yaml).unwrap();
+        let plain_proj = plain_root.get("project").and_then(Value::as_mapping).unwrap();
+        assert!(!plain_proj.contains_key("DIRECTORY_ID"));
+        assert!(!plain_proj.contains_key("MESSAGE_LIBRARY_ID"));
+        assert!(!plain_proj.contains_key("MESSAGE_EMAIL_LIBRARY_ID"));
     }
 }

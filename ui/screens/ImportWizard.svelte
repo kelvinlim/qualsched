@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as api from "@qualsched/api";
+  import { effectiveDirectory, effectiveMessageLibrary } from "../lib/container-resolve";
   import { app } from "../lib/state.svelte";
   import { errorMessage, type ImportPreview } from "../lib/types";
   import BusyMark from "../components/BusyMark.svelte";
@@ -122,6 +123,16 @@
       : null,
   );
 
+  let importedDirectory = $derived(
+    preview ? effectiveDirectory(preview.account, preview.project) : "",
+  );
+  let importedSmsLibrary = $derived(
+    preview ? effectiveMessageLibrary(preview.account, preview.project, "sms") : "",
+  );
+  let importedEmailLibrary = $derived(
+    preview ? effectiveMessageLibrary(preview.account, preview.project, "email") : "",
+  );
+
   let conflicts = $derived.by(() => {
     const out: string[] = [];
     const target = targetAccount;
@@ -138,25 +149,10 @@
         `The file was written for data center ${preview.account.dataCenter}, but "${target.name}" uses ${target.dataCenter}. Survey, mailing list and message IDs do not carry across data centers — this profile will almost certainly find nothing.`,
       );
     }
-    if (!target.defaultDirectory) {
+    const importedDir = effectiveDirectory(preview.account, preview.project);
+    if (!target.defaultDirectory && !importedDir) {
       out.push(
-        `"${target.name}" has no contact directory set. Set one on the Accounts screen or the Contacts screen will find nobody.`,
-      );
-    } else if (
-      preview.account.defaultDirectory &&
-      !same(preview.account.defaultDirectory, target.defaultDirectory)
-    ) {
-      out.push(
-        `The file's mailing list lives in directory ${preview.account.defaultDirectory}, but "${target.name}" uses ${target.defaultDirectory}. The account's own directory is what will be used.`,
-      );
-    }
-    if (
-      preview.account.libraryId &&
-      target.libraryId &&
-      !same(preview.account.libraryId, target.libraryId)
-    ) {
-      out.push(
-        `The invitation templates in this file come from library ${preview.account.libraryId}; "${target.name}" uses ${target.libraryId}. Re-pick the templates on the Survey profile screen.`,
+        `"${target.name}" has no contact directory set and the file does not name one. Set one on Accounts or Survey profile before fetching contacts.`,
       );
     }
 
@@ -274,8 +270,27 @@
     <table style="margin-top: 0.5rem;">
       <tbody>
         {#if !targetAccountId}
-          <tr><th>Directory</th><td class="mono">{preview.account.defaultDirectory || "—"}</td></tr>
-          <tr><th>Library</th><td class="mono">{preview.account.libraryId || "—"}</td></tr>
+          <tr><th>Directory</th><td class="mono">{importedDirectory || "—"}</td></tr>
+          <tr>
+            <th>{importedEmailLibrary && importedEmailLibrary !== importedSmsLibrary ? "SMS library" : "Library"}</th>
+            <td class="mono">{importedSmsLibrary || "—"}</td>
+          </tr>
+          {#if importedEmailLibrary && importedEmailLibrary !== importedSmsLibrary}
+            <tr><th>Email library</th><td class="mono">{importedEmailLibrary}</td></tr>
+          {/if}
+        {:else}
+          {#if importedDirectory && importedDirectory.toLowerCase() !== (targetAccount?.defaultDirectory ?? "").trim().toLowerCase()}
+            <tr><th>Directory (profile override)</th><td class="mono">{importedDirectory}</td></tr>
+          {/if}
+          {#if importedSmsLibrary && importedSmsLibrary.toLowerCase() !== (targetAccount?.libraryId ?? "").trim().toLowerCase()}
+            <tr>
+              <th>{importedEmailLibrary === importedSmsLibrary ? "Library (profile override)" : "SMS library (profile override)"}</th>
+              <td class="mono">{importedSmsLibrary}</td>
+            </tr>
+          {/if}
+          {#if importedEmailLibrary && importedEmailLibrary !== importedSmsLibrary && importedEmailLibrary.toLowerCase() !== (targetAccount?.libraryId ?? "").trim().toLowerCase()}
+            <tr><th>Email library (profile override)</th><td class="mono">{importedEmailLibrary}</td></tr>
+          {/if}
         {/if}
         <tr><th>Survey</th><td class="mono">{preview.project.surveyId || "—"}</td></tr>
         <tr><th>Mailing list</th><td class="mono">{preview.project.mailingListId || "—"}</td></tr>

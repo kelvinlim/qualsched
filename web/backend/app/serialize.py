@@ -17,8 +17,11 @@ def profile_to_project(row: SurveyProfile) -> Project:
         id=row.id,
         name=row.name,
         surveyId=row.survey_id,
+        directoryId=row.directory_id,
         messageId=row.message_id,
+        messageLibraryId=row.message_library_id,
         messageIdEmail=row.message_id_email,
+        messageEmailLibraryId=row.message_email_library_id,
         mailingListId=row.mailing_list_id,
         timezone=row.timezone,
         minutesExpire=row.minutes_expire,
@@ -72,8 +75,11 @@ def apply_account_fields(row: QualtricsAccount, body: Account) -> None:
 def apply_project_fields(row: SurveyProfile, body: Project, *, keep_copies: bool) -> None:
     row.name = body.name
     row.survey_id = body.surveyId
+    row.directory_id = body.directoryId
     row.message_id = body.messageId
+    row.message_library_id = body.messageLibraryId
     row.message_id_email = body.messageIdEmail
+    row.message_email_library_id = body.messageEmailLibraryId
     row.mailing_list_id = body.mailingListId
     row.timezone = body.timezone or "America/Chicago"
     row.minutes_expire = body.minutesExpire

@@ -59,11 +59,20 @@ pub struct Project {
     pub id: Uuid,
     pub name: String,
     pub survey_id: String,
+    /// Directory override (`POOL_…`) holding `mailing_list_id`; blank inherits `account.default_directory`.
+    #[serde(default)]
+    pub directory_id: String,
     /// Library message used for SMS invitations.
     pub message_id: String,
+    /// Library override (`GR_…`/`UR_…`) holding `message_id`; blank inherits `account.library_id`.
+    #[serde(default)]
+    pub message_library_id: String,
     /// Library message used for email invitations. An SMS template will not render as email.
     #[serde(default)]
     pub message_id_email: String,
+    /// Library override (`GR_…`/`UR_…`) holding `message_id_email`; blank inherits `account.library_id`.
+    #[serde(default)]
+    pub message_email_library_id: String,
     pub mailing_list_id: String,
     #[serde(default = "default_timezone")]
     pub timezone: String,
@@ -138,6 +147,31 @@ impl Project {
                     }),
             )
             .collect()
+    }
+
+    pub fn effective_directory<'a>(&'a self, account: &'a Account) -> &'a str {
+        let over = self.directory_id.trim();
+        if over.is_empty() {
+            account.default_directory.trim()
+        } else {
+            over
+        }
+    }
+
+    pub fn effective_library<'a>(
+        &'a self,
+        account: &'a Account,
+        method: crate::scheduler::Method,
+    ) -> &'a str {
+        let over = match method {
+            crate::scheduler::Method::Email => self.message_email_library_id.trim(),
+            crate::scheduler::Method::Sms => self.message_library_id.trim(),
+        };
+        if over.is_empty() {
+            account.library_id.trim()
+        } else {
+            over
+        }
     }
 }
 
@@ -234,6 +268,9 @@ mod tests {
             message_id: String::new(),
             message_id_email: String::new(),
             mailing_list_id: String::new(),
+            directory_id: String::new(),
+            message_library_id: String::new(),
+            message_email_library_id: String::new(),
             timezone: DEFAULT_TIMEZONE.into(),
             minutes_expire: DEFAULT_MINUTES_EXPIRE,
             email_header: EmailHeader::default(),
@@ -339,5 +376,49 @@ mod tests {
 
         assert_eq!(p.embedded_defaults.num_days, 7);
         assert_eq!(p.embedded_defaults.time_slots, "[800,900],2000");
+    }
+
+    #[test]
+    fn effective_directory_and_library_respect_overrides_and_defaults() {
+        use crate::scheduler::Method;
+
+        let account = Account {
+            id: Uuid::new_v4(),
+            name: "UMN".into(),
+            data_center: "yul1".into(),
+            verify_tls: true,
+            default_directory: " POOL_default ".into(),
+            library_id: " GR_default ".into(),
+            projects: Vec::new(),
+        };
+        let mut p = project();
+        assert_eq!(p.effective_directory(&account), "POOL_default");
+        assert_eq!(p.effective_library(&account, Method::Sms), "GR_default");
+        assert_eq!(p.effective_library(&account, Method::Email), "GR_default");
+
+        p.directory_id = "  POOL_study ".into();
+        p.message_library_id = " GR_sms ".into();
+        p.message_email_library_id = "   ".into();
+        assert_eq!(p.effective_directory(&account), "POOL_study");
+        assert_eq!(p.effective_library(&account, Method::Sms), "GR_sms");
+        assert_eq!(p.effective_library(&account, Method::Email), "GR_default");
+
+        p.message_email_library_id = " GR_email ".into();
+        assert_eq!(p.effective_library(&account, Method::Email), "GR_email");
+    }
+
+    #[test]
+    fn legacy_project_json_defaults_container_overrides_to_empty() {
+        let json = r#"{
+            "id": "0e6f9a1c-1f8e-4a3e-9f7a-2b3c4d5e6f70",
+            "name": "Study",
+            "surveyId": "SV_1",
+            "messageId": "MS_1",
+            "mailingListId": "CG_1"
+        }"#;
+        let p: Project = serde_json::from_str(json).expect("legacy project should load");
+        assert_eq!(p.directory_id, "");
+        assert_eq!(p.message_library_id, "");
+        assert_eq!(p.message_email_library_id, "");
     }
 }

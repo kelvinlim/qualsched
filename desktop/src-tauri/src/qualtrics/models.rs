@@ -18,6 +18,10 @@ pub struct MailingListInfo {
     pub name: String,
     #[serde(default)]
     pub contact_count: Option<u64>,
+    #[serde(default)]
+    pub directory_id: String,
+    #[serde(default)]
+    pub directory_name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,6 +31,10 @@ pub struct MessageInfo {
     pub description: String,
     #[serde(default)]
     pub category: Option<String>,
+    #[serde(default)]
+    pub library_id: String,
+    #[serde(default)]
+    pub library_name: String,
 }
 
 /// A contact exactly as Qualtrics returned it. Kept as the raw JSON object because the

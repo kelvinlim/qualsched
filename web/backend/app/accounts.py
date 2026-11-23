@@ -67,6 +67,21 @@ def qualtrics_for(account: QualtricsAccount) -> QualtricsClient:
     return QualtricsClient(account.data_center, account_token(account), account.verify_tls)
 
 
+def effective_directory(account, profile) -> str:
+    return (getattr(profile, "directory_id", "") or "").strip() or (
+        getattr(account, "default_directory", "") or ""
+    ).strip()
+
+
+def effective_library(account, profile, method: str = "sms") -> str:
+    override = (
+        getattr(profile, "message_email_library_id", "")
+        if method == "email"
+        else getattr(profile, "message_library_id", "")
+    )
+    return (override or "").strip() or (getattr(account, "library_id", "") or "").strip()
+
+
 def save_account(db: Session, user: User, body: Account) -> AppConfig:
     row = db.get(QualtricsAccount, body.id)
     if row is None:

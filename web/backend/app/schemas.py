@@ -37,8 +37,11 @@ class Project(BaseModel):
     id: str
     name: str = "New project"
     surveyId: str = ""
+    directoryId: str = ""
     messageId: str = ""
+    messageLibraryId: str = ""
     messageIdEmail: str = ""
+    messageEmailLibraryId: str = ""
     mailingListId: str = ""
     timezone: str = "America/Chicago"
     minutesExpire: int = 60
@@ -82,12 +85,16 @@ class MailingListInfo(BaseModel):
     id: str
     name: str
     contactCount: int | None = None
+    directoryId: str = ""
+    directoryName: str = ""
 
 
 class MessageInfo(BaseModel):
     id: str
     description: str
     category: str | None = None
+    libraryId: str = ""
+    libraryName: str = ""
 
 
 class ImportConfirm(BaseModel):

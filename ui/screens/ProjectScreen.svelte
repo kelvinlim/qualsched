@@ -1,12 +1,20 @@
 <script lang="ts">
   import * as api from "@qualsched/api";
   import * as cache from "../lib/cache.svelte";
+  import {
+    ALL_CONTAINERS,
+    effectiveMessageLibrary,
+    formatMailingListLabel,
+    formatMessageLabel,
+    type PickerItem,
+  } from "../lib/container-resolve";
   import { withAddedProject } from "../lib/project";
   import { app, newProject } from "../lib/state.svelte";
-  import { errorMessage, type Project } from "../lib/types";
+  import { errorMessage, type Method, type Project } from "../lib/types";
   import ApiDropdown from "../components/ApiDropdown.svelte";
   import BusyMark from "../components/BusyMark.svelte";
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
+  import ContainerPicker from "../components/ContainerPicker.svelte";
 
   let draft = $state<Project | null>(null);
   let error = $state("");
@@ -123,11 +131,49 @@
     }
   }
 
-  async function previewMessage(messageId: string) {
-    if (!app.account || !messageId) return;
+  async function loadDirectoryLists(
+    accountId: string,
+    directoryId: string,
+    force: boolean,
+  ): Promise<PickerItem[]> {
+    const showContainer = directoryId === ALL_CONTAINERS;
+    const lists = await cache.mailingLists(accountId, directoryId, force);
+    return lists.map((m) => ({
+      id: m.id,
+      label: formatMailingListLabel(m, showContainer),
+      name: m.name,
+      containerId: m.directoryId || (showContainer ? "" : directoryId),
+      containerName: m.directoryName || "",
+    }));
+  }
+
+  async function loadLibraryMessages(
+    accountId: string,
+    libraryId: string,
+    force: boolean,
+  ): Promise<PickerItem[]> {
+    const showContainer = libraryId === ALL_CONTAINERS;
+    const msgs = await cache.messages(accountId, libraryId, force);
+    return msgs.map((m) => ({
+      id: m.id,
+      label: formatMessageLabel(m, showContainer),
+      name: m.description,
+      containerId: m.libraryId || (showContainer ? "" : libraryId),
+      containerName: m.libraryName || "",
+      category: m.category,
+    }));
+  }
+
+  async function previewMessage(messageId: string, method: Method) {
+    if (!app.account || !draft || !messageId) return;
     error = "";
     try {
-      messagePreview = await api.getMessageText(app.account.id, messageId);
+      const libraryId = effectiveMessageLibrary(app.account, draft, method);
+      messagePreview = await api.getMessageText(
+        app.account.id,
+        messageId,
+        libraryId || undefined,
+      );
     } catch (e) {
       error = errorMessage(e);
     }
@@ -188,21 +234,22 @@
               }))}
           />
 
-          <ApiDropdown
-            label="Mailing list"
-            bind:value={draft.mailingListId}
-            hint={app.account.defaultDirectory
-              ? ""
-              : "Set the account's contact directory first."}
-            loader={async () =>
-              (await cache.mailingLists(app.account!.id, app.account!.defaultDirectory)).map(
-                (m) => ({
-                  id: m.id,
-                  label: `${m.name}${m.contactCount === null ? "" : ` — ${m.contactCount} contacts`}`,
-                  name: m.name,
-                }),
-              )}
-          />
+          {#key `${app.account.id}:${draft.id}`}
+            <ContainerPicker
+              label="Mailing list"
+              containerLabel="Directory"
+              allLabel="All directories"
+              bind:value={draft.mailingListId}
+              bind:containerOverride={draft.directoryId}
+              defaultContainerId={app.account.defaultDirectory}
+              hint={app.account.defaultDirectory || draft.directoryId
+                ? ""
+                : "No account contact directory set — search all directories to pick a list."}
+              loadContainers={(force) => cache.directories(app.account!.id, force)}
+              loadItems={(dirId, force) =>
+                loadDirectoryLists(app.account!.id, dirId, force)}
+            />
+          {/key}
         </div>
 
         {#if copies.length}
@@ -240,40 +287,44 @@
         <div class="card">
           <h2>Invitation templates</h2>
 
-          <ApiDropdown
-            label="SMS message"
-            bind:value={draft.messageId}
-            loader={async () =>
-              (await cache.messages(app.account!.id)).map((m) => ({
-                id: m.id,
-                label: `${m.description} (${m.id})`,
-                name: m.description,
-              }))}
-          />
+          {#key `${app.account.id}:${draft.id}`}
+            <ContainerPicker
+              label="SMS message"
+              containerLabel="Library"
+              allLabel="All libraries"
+              bind:value={draft.messageId}
+              bind:containerOverride={draft.messageLibraryId}
+              defaultContainerId={app.account.libraryId}
+              loadContainers={(force) => cache.libraries(app.account!.id, force)}
+              loadItems={(libId, force) =>
+                loadLibraryMessages(app.account!.id, libId, force)}
+            />
 
-          <ApiDropdown
-            label="Email message"
-            bind:value={draft.messageIdEmail}
-            hint="Email needs its own template — an SMS template will not render as an email."
-            loader={async () =>
-              (await cache.messages(app.account!.id)).map((m) => ({
-                id: m.id,
-                label: `${m.description} (${m.id})`,
-                name: m.description,
-              }))}
-          />
+            <ContainerPicker
+              label="Email message"
+              containerLabel="Library"
+              allLabel="All libraries"
+              bind:value={draft.messageIdEmail}
+              bind:containerOverride={draft.messageEmailLibraryId}
+              defaultContainerId={app.account.libraryId}
+              hint="Email needs its own template — an SMS template will not render as an email."
+              loadContainers={(force) => cache.libraries(app.account!.id, force)}
+              loadItems={(libId, force) =>
+                loadLibraryMessages(app.account!.id, libId, force)}
+            />
+          {/key}
 
           <div class="row">
             <button
               type="button"
-              onclick={() => previewMessage(draft!.messageId)}
+              onclick={() => previewMessage(draft!.messageId, "sms")}
               disabled={!draft.messageId}
             >
               Preview SMS text
             </button>
             <button
               type="button"
-              onclick={() => previewMessage(draft!.messageIdEmail)}
+              onclick={() => previewMessage(draft!.messageIdEmail, "email")}
               disabled={!draft.messageIdEmail}
             >
               Preview email text
