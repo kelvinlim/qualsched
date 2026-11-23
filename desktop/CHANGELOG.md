@@ -2,6 +2,11 @@
 
 All notable changes to QualSched are documented in this file.
 
+## [0.2.7] - 2026-11-22
+
+### Changed
+- **Hide PHI** now also obscures the selected account name and survey profile/study name in the top bar (plus the signed-in user email in the web sidebar).
+
 ## [0.2.6] - 2026-11-22
 
 ### Added
