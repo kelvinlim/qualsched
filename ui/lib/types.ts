@@ -253,6 +253,8 @@ export interface AcquisitionRow {
   contactId: string;
   displayName: string;
   extRef?: string;
+  email?: string;
+  phone?: string;
   monitor: "active" | "inactive";
   timezone: string;
   timezoneSource: "contact" | "profile" | "invalid" | "missing";

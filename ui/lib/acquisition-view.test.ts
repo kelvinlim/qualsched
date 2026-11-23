@@ -5,17 +5,21 @@
  */
 import {
   WEEKDAY_HEADERS,
+  currentWeekRange,
   dayDetail,
   dayGlyph,
+  dayHasInvite,
   dayLabel,
   formatFullDate,
   formatShortDate,
   groupByWeeks,
+  hasCurrentWeekInvite,
   heatOf,
   isoWeekday,
   lastSeven,
   monitorStatus,
   promptStatusLabel,
+  rowSearchFields,
   rowWindow,
   statusPatchApplies,
   statusWriteIsCurrent,
@@ -23,6 +27,7 @@ import {
   visibleRows,
   windowSummary,
 } from "./acquisition-view.ts";
+import { matchesQuery } from "./filter.ts";
 import type { AcquisitionDay, AcquisitionRow } from "./types.ts";
 
 function assertEqual(got: unknown, expected: unknown, label: string) {
@@ -218,17 +223,68 @@ assertEqual(
   "future prompts are outside the window total",
 );
 
+assertEqual(
+  currentWeekRange("2026-11-22"),
+  { start: "2026-11-16", end: "2026-11-22" },
+  "Sunday belongs to the Monday-Sunday week starting Nov 16",
+);
+assertEqual(
+  currentWeekRange("2026-11-18"),
+  { start: "2026-11-16", end: "2026-11-22" },
+  "Wednesday belongs to the same Monday-Sunday week",
+);
+assertEqual(dayHasInvite(ratio("2026-11-18", 0, 1)), true, "ratio day counts as having invites");
+assertEqual(dayHasInvite({ date: "2026-11-20", kind: "future", later: 2 }), true, "future day counts as having invites");
+assertEqual(dayHasInvite({ date: "2026-11-18", kind: "none", later: 0 }), false, "none day has no invites");
+assertEqual(dayHasInvite({ date: "2026-11-18", kind: "nonStudy", later: 0 }), false, "nonStudy day has no invites");
+
+const activeCurrentRatio = {
+  monitor: "active",
+  name: "Ada Lovelace",
+  today: "2026-11-22",
+  days: [
+    { date: "2026-11-10", kind: "ratio" as const, completed: 1, expected: 1, later: 0 },
+    { date: "2026-11-18", kind: "ratio" as const, completed: 0, expected: 1, later: 0 },
+  ],
+};
+const activeCurrentFuture = {
+  monitor: "active",
+  name: "Alan Turing",
+  today: "2026-11-22",
+  days: [{ date: "2026-11-22", kind: "future" as const, later: 2 }],
+};
+const activePriorWeekOnly = {
+  monitor: "active",
+  name: "Katherine Johnson",
+  today: "2026-11-22",
+  days: [
+    { date: "2026-11-15", kind: "ratio" as const, completed: 4, expected: 4, later: 0 },
+    { date: "2026-11-18", kind: "none" as const, later: 0 },
+    { date: "2026-11-22", kind: "nonStudy" as const, later: 0 },
+  ],
+};
+const inactiveCurrentWeek = {
+  monitor: "inactive",
+  name: "Grace Hopper",
+  today: "2026-11-22",
+  days: [{ date: "2026-11-18", kind: "ratio" as const, completed: 2, expected: 2, later: 0 }],
+};
 const rows = [
-  { monitor: "active", name: "Ada Lovelace" },
-  { monitor: "inactive", name: "Grace Hopper" },
+  activeCurrentRatio,
+  activeCurrentFuture,
+  activePriorWeekOnly,
+  inactiveCurrentWeek,
 ];
+assertEqual(hasCurrentWeekInvite(activeCurrentRatio), true, "ratio in current week matches");
+assertEqual(hasCurrentWeekInvite(activeCurrentFuture), true, "future invite in current week matches");
+assertEqual(hasCurrentWeekInvite(activePriorWeekOnly), false, "prior-week invite does not match current week");
 assertEqual(
   visibleRows(rows, true).map((row) => row.name),
-  ["Ada Lovelace"],
-  "active only hides inactive and does not delete them from the source list",
+  ["Ada Lovelace", "Alan Turing"],
+  "active only keeps non-inactive rows with current-week survey invitations",
 );
-assertEqual(visibleRows(rows, false).length, 2, "showing inactive is a display choice");
-assertEqual(rows.length, 2, "filter does not mutate the report");
+assertEqual(visibleRows(rows, false).length, 4, "showing all returns every row regardless of status or week");
+assertEqual(rows.length, 4, "filter does not mutate the report");
 assertEqual(monitorStatus(undefined), "active", "missing flag stays active");
 assertEqual(monitorStatus("inactive"), "inactive", "explicit inactive");
 assertEqual(monitorStatus("ACTIVE"), "active", "only the word inactive hides a row");
@@ -263,6 +319,26 @@ assertEqual(
   false,
   "a stale save must not release a new save that was given the same ticket number",
 );
+
+// Search filter by name, reference, phone (digits normalized), and email, respecting Hide PHI.
+const searchableRow = {
+  contactId: "CID_42",
+  displayName: "Ada Lovelace",
+  extRef: "R34805",
+  phone: "(612) 555-1234",
+  email: "ada@example.com",
+};
+assertEqual(matchesQuery("ada", rowSearchFields(searchableRow, false)), true, "search by name");
+assertEqual(matchesQuery("R34805", rowSearchFields(searchableRow, false)), true, "search by extRef");
+assertEqual(matchesQuery("6125551234", rowSearchFields(searchableRow, false)), true, "search by digits-only phone");
+assertEqual(matchesQuery("example.com", rowSearchFields(searchableRow, false)), true, "search by email");
+assertEqual(matchesQuery("ada 1234", rowSearchFields(searchableRow, false)), true, "search multi-term AND");
+assertEqual(matchesQuery("grace", rowSearchFields(searchableRow, false)), false, "search misses non-matching text");
+assertEqual(matchesQuery("R34805", rowSearchFields(searchableRow, true)), true, "hidePhi still searches extRef");
+assertEqual(matchesQuery("CID_42", rowSearchFields(searchableRow, true)), true, "hidePhi still searches contactId");
+assertEqual(matchesQuery("Ada", rowSearchFields(searchableRow, true)), false, "hidePhi excludes name from search");
+assertEqual(matchesQuery("6125551234", rowSearchFields(searchableRow, true)), false, "hidePhi excludes phone from search");
+assertEqual(matchesQuery("example.com", rowSearchFields(searchableRow, true)), false, "hidePhi excludes email from search");
 
 const source = await import("node:fs/promises").then((fs) =>
   fs.readFile(new URL("./acquisition-view.ts", import.meta.url), "utf8"),

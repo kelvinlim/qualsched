@@ -4,6 +4,14 @@ All notable changes to QualSched Web are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-11-22
+
+### Added
+- **Acquisition** participant search input above the table (name, reference, phone, email; respects **Hide PHI** by searching only `extRef` and `contactId`) and compact heatmap legend.
+
+### Changed
+- **Acquisition** partial day boxes (`1%–99%`) use warm amber fills while `100%` completed days use solid emerald green, multi-year week labels are widened to prevent overlap, and **Active only** keeps participants who are not `Inactive` and have survey invitations during the current Monday–Sunday week.
+
 ## [0.2.5] - 2026-11-22
 
 ### Fixed

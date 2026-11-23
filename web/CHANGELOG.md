@@ -4,6 +4,14 @@ All notable changes to QualSched Web are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-11-22
+
+### Added
+- **Acquisition** `AcquisitionRow` now includes in-memory `email` and `phone` fields so the shared UI search filter can match by name, reference, phone, and email (excluded from search when **Hide PHI** is active).
+
+### Changed
+- Shared **Acquisition** UI updates: distinct amber-partial vs solid-emerald `100%` heatmap colors with legend, wider multi-year week labels, and **Active only** filtering to non-`Inactive` participants with current-week survey invitations.
+
 ## [0.2.5] - 2026-11-22
 
 ### Fixed

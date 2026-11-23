@@ -2,6 +2,16 @@
 
 All notable changes to QualSched are documented in this file.
 
+## [0.2.6] - 2026-11-22
+
+### Added
+- **Acquisition** search input above the table to filter rows by name, external reference (`extRef`), phone number (digits-normalized), and email address. When **Hide PHI** is enabled, the query is cleared and searching matches only `extRef` and `contactId`.
+- Compact **Acquisition** heatmap legend above the table for **All complete (100%)**, **Partial**, **None completed (0%)**, **No surveys expected**, and **Scheduled**.
+
+### Changed
+- **Acquisition** partial day boxes (`1%–99%`) now use warm amber fill levels while `100%` completed days render in solid emerald green for clearer visual contrast, and multi-year week labels were widened (`5.8rem`) to prevent overlap.
+- Checking **Active only** on **Acquisition** now filters to participants who are not marked `Inactive` and have at least one listed survey invitation during the current Monday–Sunday week.
+
 ## [0.2.5] - 2026-11-22
 
 ### Fixed

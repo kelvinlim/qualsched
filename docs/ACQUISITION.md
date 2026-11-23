@@ -57,13 +57,24 @@ Days differ on purpose:
 An invitation outside the study window is still shown. In **Entire study** view,
 trailing/unrelated `nonStudy` days are trimmed when the row has study days.
 
-## Weekly layout and day detail
+## Weekly layout, colors, filter, and day detail
+
+The toolbar above the table includes a **Search participants** text box that filters
+rows client-side by name, external reference (`extRef`), phone number (digits
+normalized so formatted and unformatted numbers match), email address, and contact id
+via `matchesQuery` and `rowSearchFields`. When **Hide PHI** is enabled, any active
+query is cleared and searching matches only `extRef` and `contactId`.
 
 Day boxes in both **Last 7 days** and **Entire study** are grouped into 7-column
 **Monday–Sunday** week rows (`groupByWeeks`, header `M T W T F S S`) stacked vertically
 so weekdays and weekends (`S`, `S`, highlighted) align down columns. Each row shows
 the Monday short date (with year included when a row spans multiple years), and blank
-gap weeks with no days are omitted.
+gap weeks with no days are omitted. A compact legend above the table summarizes the
+heatmap states: **All complete (100%)** uses solid emerald green, **Partial**
+(`1%–99%`) uses warm amber fill levels (`heat-1`, `heat-2`, `heat-3`), **None
+completed (0%)** uses the red-bordered zero box (`heat-0`), **No surveys expected**
+uses a muted neutral box (`heat-none`), and **Scheduled** uses the dashed box
+(`heat-future`).
 
 Hovering or focusing a day box opens a viewport-clamped popover showing:
 
@@ -95,8 +106,10 @@ as join keys.
 Both apps read and write that field, so the flag is the same on desktop and web
 without a local file of participant ids. The write does not seed other embedded
 defaults, does not change `SurveysScheduled`, and does not call the distribution
-delete API. Eligibility ignores `QsMonitor`. **Active only** is a checkbox in
-memory; the server still returns inactive rows.
+delete API. Eligibility ignores `QsMonitor`. **Active only** is a display filter in
+memory: when checked, it shows participants who are not marked `inactive` and have at
+least one listed invitation during the current Monday–Sunday week (`hasCurrentWeekInvite`).
+The server still returns all mailing-list rows so unchecking **Active only** shows everyone.
 
 ## Desktop retention
 
@@ -105,8 +118,10 @@ Nothing this feature creates is written to disk.
 - Acquisition reads only mailing-list contacts and distribution records in memory; no
   response export files or survey answers are fetched.
 - The command returns aggregate counts, per-prompt schedule/status metadata
-  (`sendLocal`, `method`, `status`), and the display name and external reference
-  Contacts already shows. It does not return answers, emails, phones, or response ids.
+  (`sendLocal`, `method`, `status`), and the contact summary fields Contacts and
+  Distributions already show (`displayName`, `extRef`, `email`, `phone`) for in-memory
+  table search (excluded from search when **Hide PHI** is enabled). It never fetches
+  or returns survey answers or response ids.
 - The webview holds the report in component state. It is cleared when the account
   or survey profile changes and when the screen is left. It is not put in
   `localStorage`, `sessionStorage`, IndexedDB, or the lookup cache. The only
@@ -136,10 +151,13 @@ Nothing this feature creates is written to disk.
 - The browser calls `/api/.../acquisition` (which starts/polls an in-process worker)
   when the researcher clicks **Load** or **Refresh**. The Qualtrics token stays on
   the server. Another researcher's account id returns 404 and does not call Qualtrics.
-- Acquisition does not download response exports or write temp files to disk.
-- The JSON response is the same aggregate the desktop command returns. FastAPI
-  models forbid extra fields (`extra="forbid"`). `Cache-Control: no-store` is set,
-  and the browser fetch uses `cache: "no-store"`.
+- Acquisition does not download response exports or write temp files to disk. Pending
+  `202` status polling responses and error payloads never contain emails, phones, or
+  contact ids.
+- The JSON `200` response returns the same `AcquisitionRow` shape as desktop (in-memory
+  aggregates plus `displayName`, `extRef`, `email`, and `phone` for table filtering).
+  FastAPI models forbid extra fields (`extra="forbid"`). `Cache-Control: no-store` is
+  set, and the browser fetch uses `cache: "no-store"`.
 - MariaDB is unchanged: `users`, `qualtrics_accounts`, `survey_profiles` only.
   Tokens stay Fernet ciphertext. There is still no contacts table.
 - The status write is a Qualtrics contact update of `QsMonitor` only.
@@ -152,9 +170,12 @@ invitations, DST/timezone handling, clamped window, `QsMonitor` not mutating eli
 
 Web: `pytest tests/test_acquisition.py` (the same rules, plus auth isolation, no
 external requests opened by opening the screen alone, status round-trip not deleting
-invitations, and `open()` not called during `load_report`).
+invitations, PII exclusion on error/`202`/404 responses with `email`/`phone` returned
+on `AcquisitionRow`, and `open()` not called during `load_report`).
 
 UI: `ui/lib/acquisition-view.test.ts` (Mon–Sun weekday headers, `isoWeekday` / date
 formatters, stacked weekly `groupByWeeks` padding and gap omission, study tail-trimming,
 `promptStatusLabel` & `dayDetail`, labels for `0/n` vs `none` vs `future` vs `nonStudy` vs
-`unknown`, active-only filter without mutating the list, no storage APIs in the module).
+`unknown`, `rowSearchFields` + `matchesQuery` with and without **Hide PHI**, **Active
+only** requiring non-inactive plus current Mon–Sun week invites without mutating the
+list, no storage APIs in the module).
