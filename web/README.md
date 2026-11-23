@@ -1,6 +1,6 @@
 # QualSched Web
 
-Hosted researcher UI for scheduling Qualtrics EMA invitations. **Version 0.2.4**.
+Hosted researcher UI for scheduling Qualtrics EMA invitations. **Version 0.2.5**.
 Lives in the [QualSched monorepo](https://github.com/kelvinlim/qualsched) as `web/`,
 sharing Svelte screens with the desktop app via `ui/`.
 

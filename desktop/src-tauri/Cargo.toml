@@ -1,6 +1,6 @@
 [package]
 name = "qualsched"
-version = "0.2.4"
+version = "0.2.5"
 description = "Desktop GUI for scheduling Qualtrics survey distributions"
 authors = ["LNPI"]
 edition = "2021"
@@ -40,7 +40,6 @@ keyring = { version = "3", features = [
     "sync-secret-service",
 ] }
 thiserror = "2"
-flate2 = "=1.1.9"
 
 [dev-dependencies]
 rand = { version = "0.8", features = ["small_rng"] }

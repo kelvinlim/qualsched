@@ -10,6 +10,7 @@ pub const WRITE_PACING: Duration = Duration::from_millis(120);
 
 /// Desktop has no 60-second proxy in front of the download. The body is still
 /// capped at 32 MiB; this deadline is only the socket timeout.
+#[allow(dead_code)]
 pub const EXPORT_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(300);
 
 pub struct QualtricsClient {
@@ -155,6 +156,7 @@ impl QualtricsClient {
 
     /// Binary download. The error text is only the HTTP status — export files can
     /// contain participant data and must not be copied into an error or a log.
+    #[allow(dead_code)]
     pub async fn get_bytes(&self, path: &str) -> AppResult<Vec<u8>> {
         let mut retried = false;
         loop {
@@ -173,6 +175,7 @@ impl QualtricsClient {
         }
     }
 
+    #[allow(dead_code)]
     async fn read_download(&self, path: &str) -> AppResult<Download> {
         let mut resp = self
             .prepare(
@@ -247,6 +250,7 @@ impl QualtricsClient {
 
     /// JSON call for response export. The error carries only an HTTP status and,
     /// when Qualtrics sent one, a machine `errorCode`. The error sentence is dropped.
+    #[allow(dead_code)]
     pub async fn export_json(
         &self,
         method: reqwest::Method,
@@ -281,6 +285,7 @@ impl QualtricsClient {
         }
     }
 
+    #[allow(dead_code)]
     async fn export_json_once(
         &self,
         method: reqwest::Method,
@@ -351,6 +356,7 @@ impl QualtricsClient {
 
 }
 
+#[allow(dead_code)]
 enum Download {
     Body(Vec<u8>),
     Retry { host: String, status: u16 },
@@ -358,6 +364,7 @@ enum Download {
 }
 
 /// A download error is at most 4 KiB of JSON. The buffer is wiped. Only a GRP_1 host is kept.
+#[allow(dead_code)]
 async fn download_error_host(resp: &mut reqwest::Response) -> Option<String> {
     let mut raw = Vec::new();
     while raw.len() < 4096 {
@@ -378,6 +385,7 @@ async fn download_error_host(resp: &mut reqwest::Response) -> Option<String> {
     host
 }
 
+#[allow(dead_code)]
 fn grp1_host_from_bytes(raw: &[u8]) -> Option<String> {
     let value: Value = serde_json::from_slice(raw).ok()?;
     let code = value
@@ -477,6 +485,7 @@ pub fn machine_code(value: &str) -> Option<String> {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct RemoteReject {
     pub status: u16,

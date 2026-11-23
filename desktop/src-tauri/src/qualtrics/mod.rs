@@ -7,4 +7,4 @@ pub mod messages;
 pub mod models;
 pub mod surveys;
 
-pub use client::{machine_code, QualtricsClient, RemoteReject};
+pub use client::QualtricsClient;

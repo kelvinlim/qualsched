@@ -2699,11 +2699,10 @@ dependencies = [
 
 [[package]]
 name = "qualsched"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "chrono",
  "chrono-tz",
- "flate2",
  "keyring",
  "rand 0.8.7",
  "reqwest 0.12.28",
