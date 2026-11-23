@@ -451,14 +451,13 @@ def test_http_report_counts_distribution_stats_and_filters_other_mailing_lists(c
     assert response.status_code == 200, response.text
     assert response.headers.get("cache-control") == "no-store"
     body = response.json()
-    text = response.text
-    assert EMAIL not in text
-    assert PHONE not in text
     assert body["exportMode"] == "distribution-stats"
     assert body["definitive"] is True
     assert body["excluded"]["unjoinedInvitations"] == 0
     assert body["rows"][0]["displayName"] == "Ada Lovelace"
     assert body["rows"][0]["extRef"] == "P1"
+    assert body["rows"][0]["email"] == EMAIL
+    assert body["rows"][0]["phone"] == PHONE
     assert body["rows"][0]["monitor"] == "active"
 
     day13 = next(item for item in body["rows"][0]["days"] if item["date"] == "2026-07-13")
@@ -787,8 +786,10 @@ def test_acquisition_get_returns_before_qualtrics_answers(ctx, monkeypatch):
         time.sleep(0.02)
     assert done is not None
     assert done.status_code == 200, done.text
-    assert done.json()["rows"][0]["displayName"] == "Ada Lovelace"
-    assert EMAIL not in done.text
+    done_body = done.json()
+    assert done_body["rows"][0]["displayName"] == "Ada Lovelace"
+    assert done_body["rows"][0]["email"] == EMAIL
+    assert done_body["rows"][0]["phone"] == PHONE
 
 
 def test_cancelled_listing_does_not_ask_for_invitations():

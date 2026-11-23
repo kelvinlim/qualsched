@@ -95,9 +95,42 @@ export function monitorStatus(raw: string | null | undefined): "active" | "inact
   return (raw ?? "").trim().toLowerCase() === "inactive" ? "inactive" : "active";
 }
 
-export function visibleRows<T extends { monitor: string }>(rows: T[], activeOnly: boolean): T[] {
+export function currentWeekRange(today: string): { start: string; end: string } {
+  const start = shiftDate(today, -isoWeekday(today));
+  return { start, end: shiftDate(start, 6) };
+}
+
+export function dayHasInvite(day: AcquisitionDay): boolean {
+  return day.kind === "ratio" || day.kind === "future" || (day.prompts?.length ?? 0) > 0;
+}
+
+export function hasCurrentWeekInvite(row: Pick<AcquisitionRow, "today" | "days">): boolean {
+  const { start, end } = currentWeekRange(row.today);
+  return row.days.some((day) => day.date >= start && day.date <= end && dayHasInvite(day));
+}
+
+export function visibleRows<T extends Pick<AcquisitionRow, "monitor" | "today" | "days">>(
+  rows: T[],
+  activeOnly: boolean,
+): T[] {
   if (!activeOnly) return rows;
-  return rows.filter((row) => row.monitor !== "inactive");
+  return rows.filter((row) => row.monitor !== "inactive" && hasCurrentWeekInvite(row));
+}
+
+export function rowSearchFields(
+  row: Pick<AcquisitionRow, "displayName" | "extRef" | "phone" | "email" | "contactId">,
+  hidePhi: boolean,
+): string[] {
+  if (hidePhi) {
+    return [row.extRef ?? "", row.contactId];
+  }
+  return [
+    row.displayName,
+    row.extRef ?? "",
+    row.phone ?? "",
+    row.email ?? "",
+    row.contactId,
+  ];
 }
 
 function shiftDate(iso: string, days: number): string {

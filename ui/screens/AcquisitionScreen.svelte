@@ -9,6 +9,7 @@
     groupByWeeks,
     heatOf,
     promptStatusLabel,
+    rowSearchFields,
     rowWindow,
     statusPatchApplies,
     statusWriteIsCurrent,
@@ -16,6 +17,7 @@
     visibleRows,
     windowSummary,
   } from "../lib/acquisition-view";
+  import { matchesQuery } from "../lib/filter";
   import { app } from "../lib/state.svelte";
   import { participantLabel } from "../lib/phi";
   import BusyMark from "../components/BusyMark.svelte";
@@ -34,6 +36,7 @@
   let loadOp = $state(0);
   let loadController: AbortController | null = null;
   let activeOnly = $state(true);
+  let query = $state("");
   let span = $state<"7" | "study">("7");
   let marking = $state("");
   let hovered = $state<{
@@ -49,7 +52,10 @@
   /** Latest in-flight save for each participant. A newer click on the same row wins. */
   const markTickets = new Map<string, number>();
 
-  const shown = $derived(report ? visibleRows(report.rows, activeOnly) : []);
+  const activeRows = $derived(report ? visibleRows(report.rows, activeOnly) : []);
+  const shown = $derived(
+    activeRows.filter((row) => matchesQuery(query, rowSearchFields(row, app.hidePhi))),
+  );
   const hoveredDetail = $derived(hovered ? dayDetail(hovered.day) : null);
 
   $effect(() => {
@@ -65,6 +71,7 @@
       stageLine = "";
       hovered = null;
       marking = "";
+      query = "";
       markTickets.clear();
       contextGeneration += 1;
     });
@@ -73,6 +80,13 @@
       hovered = null;
       loadController?.abort();
     };
+  });
+
+  // Turning Hide PHI on clears any search text that could carry a participant's name, phone, or email.
+  $effect(() => {
+    if (app.hidePhi) {
+      query = "";
+    }
   });
 
   $effect(() => {
@@ -262,7 +276,9 @@
       Load
     {/if}
   </button>
-  <label>
+  <label
+    title="Show participants not marked Inactive who have survey invitations during the current Monday–Sunday week"
+  >
     <input type="checkbox" bind:checked={activeOnly} />
     Active only
   </label>
@@ -278,6 +294,18 @@
       Entire study
     </button>
   </div>
+  <input
+    class="search"
+    type="search"
+    bind:value={query}
+    placeholder={app.hidePhi
+      ? "Search external reference or ID"
+      : "Search name, reference, phone or email"}
+    aria-label="Search participants"
+  />
+  {#if report && query.trim()}
+    <span class="hint" style="margin: 0;">{shown.length} of {activeRows.length} shown</span>
+  {/if}
 </div>
 
 {#if loading && stageLine}
@@ -309,11 +337,52 @@
   <div class="empty">Nothing loaded yet — press Load.</div>
 {:else if report && shown.length === 0}
   <div class="empty">
-    {report.rows.length === 0
-      ? "No participants on this mailing list."
-      : "No active participants. Turn off Active only to see everyone."}
+    {#if report.rows.length === 0}
+      No participants on this mailing list.
+    {:else if activeRows.length === 0}
+      No active participants with survey invitations this week. Turn off Active only to see everyone.
+    {:else}
+      No participants match this search.
+    {/if}
   </div>
 {:else if report}
+  <div class="heat-legend" aria-label="Day box legend">
+    <span class="heat-legend-item">
+      <span class="heat heat-swatch heat-4" aria-hidden="true">
+        <span class="fill"></span>
+        <span class="glyph">4</span>
+      </span>
+      All complete (100%)
+    </span>
+    <span class="heat-legend-item">
+      <span class="heat heat-swatch heat-2" aria-hidden="true">
+        <span class="fill"></span>
+        <span class="glyph">2</span>
+      </span>
+      Partial
+    </span>
+    <span class="heat-legend-item">
+      <span class="heat heat-swatch heat-0" aria-hidden="true">
+        <span class="fill"></span>
+        <span class="glyph">0</span>
+      </span>
+      None completed (0%)
+    </span>
+    <span class="heat-legend-item">
+      <span class="heat heat-swatch heat-none" aria-hidden="true">
+        <span class="fill"></span>
+        <span class="glyph">–</span>
+      </span>
+      No surveys expected
+    </span>
+    <span class="heat-legend-item">
+      <span class="heat heat-swatch heat-future" aria-hidden="true">
+        <span class="fill"></span>
+        <span class="glyph">·</span>
+      </span>
+      Scheduled
+    </span>
+  </div>
   <div class="table-wrap">
     <table class="acquisition">
       <caption class="sr-only">
