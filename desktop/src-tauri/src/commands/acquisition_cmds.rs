@@ -34,7 +34,8 @@ pub async fn get_acquisition(
         let (account, project) = resolve(&cfg, account_id, project_id)?;
         (account.clone(), project.clone())
     };
-    if account.default_directory.trim().is_empty() || project.mailing_list_id.trim().is_empty() {
+    if project.effective_directory(&account).is_empty() || project.mailing_list_id.trim().is_empty()
+    {
         return Err(AppError::Invalid(
             "Set the contact directory and mailing list before loading acquisition.".into(),
         ));
@@ -74,13 +75,9 @@ pub async fn set_acquisition_status(
         let (account, project) = resolve(&cfg, account_id, project_id)?;
         (account.clone(), project.clone())
     };
+    let directory_id = project.effective_directory(&account);
     let client = state.client(account_id).await?;
-    let raw = contacts::list_contacts(
-        &client,
-        &account.default_directory,
-        &project.mailing_list_id,
-    )
-    .await?;
+    let raw = contacts::list_contacts(&client, directory_id, &project.mailing_list_id).await?;
     let contact = raw
         .iter()
         .find(|item| item.id() == Some(contact_id.as_str()))
@@ -88,7 +85,7 @@ pub async fn set_acquisition_status(
     let before = contact.embedded().get("SurveysScheduled").cloned();
     let updated = contacts::update_contact(
         &client,
-        &account.default_directory,
+        directory_id,
         &project.mailing_list_id,
         contact,
         &BTreeMap::new(),

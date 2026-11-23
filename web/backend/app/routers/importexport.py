@@ -50,8 +50,21 @@ def confirm_import(
 ):
     target_id = body.targetAccountId
     if target_id:
+        target = svc.get_account(db, user, target_id)
+        project = body.project.model_copy()
+        file_dir = body.account.defaultDirectory.strip()
+        target_dir = (target.default_directory or "").strip()
+        if not project.directoryId.strip() and file_dir and file_dir.lower() != target_dir.lower():
+            project.directoryId = file_dir
+        file_lib = body.account.libraryId.strip()
+        target_lib = (target.library_id or "").strip()
+        if file_lib and file_lib.lower() != target_lib.lower():
+            if not project.messageLibraryId.strip():
+                project.messageLibraryId = file_lib
+            if not project.messageEmailLibraryId.strip():
+                project.messageEmailLibraryId = file_lib
         # Add the profile only; the existing account's token and connection stay untouched.
-        cfg = svc.save_project(db, user, target_id, body.project)
+        cfg = svc.save_project(db, user, target_id, project)
         return cfg
 
     cfg = svc.save_account(db, user, body.account)

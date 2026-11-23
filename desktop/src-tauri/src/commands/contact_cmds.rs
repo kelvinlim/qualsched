@@ -77,7 +77,7 @@ pub async fn get_contacts(
     let client = state.client(account_id).await?;
     let raw = contacts::list_contacts(
         &client,
-        &account.default_directory,
+        project.effective_directory(&account),
         &project.mailing_list_id,
     )
     .await?;
@@ -102,7 +102,7 @@ pub async fn create_contact(
     let client = state.client(account_id).await?;
     let created = contacts::create_contact(
         &client,
-        &account.default_directory,
+        project.effective_directory(&account),
         &project.mailing_list_id,
         &core,
         &embedded,
@@ -128,13 +128,9 @@ pub async fn update_contact(
         let (a, p) = resolve(&cfg, account_id, project_id)?;
         (a.clone(), p.clone())
     };
+    let directory_id = project.effective_directory(&account);
     let client = state.client(account_id).await?;
-    let raw = contacts::list_contacts(
-        &client,
-        &account.default_directory,
-        &project.mailing_list_id,
-    )
-    .await?;
+    let raw = contacts::list_contacts(&client, directory_id, &project.mailing_list_id).await?;
     let contact = raw
         .iter()
         .find(|c| c.id() == Some(contact_id.as_str()))
@@ -145,7 +141,7 @@ pub async fn update_contact(
 
     let updated = contacts::update_contact(
         &client,
-        &account.default_directory,
+        directory_id,
         &project.mailing_list_id,
         contact,
         &core,
@@ -183,12 +179,8 @@ pub async fn delete_contact(
         (a.clone(), p.clone())
     };
     let client = state.client(account_id).await?;
-    let raw = contacts::list_contacts(
-        &client,
-        &account.default_directory,
-        &project.mailing_list_id,
-    )
-    .await?;
+    let directory_id = project.effective_directory(&account);
+    let raw = contacts::list_contacts(&client, directory_id, &project.mailing_list_id).await?;
     let contact = raw
         .iter()
         .find(|c| c.id() == Some(contact_id.as_str()))
@@ -198,7 +190,7 @@ pub async fn delete_contact(
     let report = crate::commands::distribution_cmds::cancel_pending_for_contact(
         &client,
         &project,
-        &account.default_directory,
+        directory_id,
         contact,
     )
     .await?;
@@ -215,7 +207,7 @@ pub async fn delete_contact(
 
     contacts::remove_from_mailing_list(
         &client,
-        &account.default_directory,
+        directory_id,
         &project.mailing_list_id,
         &contact_id,
     )
@@ -242,12 +234,8 @@ pub async fn apply_embedded_defaults(
         (a.clone(), p.clone())
     };
     let client = state.client(account_id).await?;
-    let raw = contacts::list_contacts(
-        &client,
-        &account.default_directory,
-        &project.mailing_list_id,
-    )
-    .await?;
+    let directory_id = project.effective_directory(&account);
+    let raw = contacts::list_contacts(&client, directory_id, &project.mailing_list_id).await?;
     let seed = project.embedded_defaults.as_pairs();
 
     let mut out = Vec::new();
@@ -257,7 +245,7 @@ pub async fn apply_embedded_defaults(
     {
         let updated = contacts::update_contact(
             &client,
-            &account.default_directory,
+            directory_id,
             &project.mailing_list_id,
             contact,
             &BTreeMap::new(),

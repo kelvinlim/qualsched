@@ -17,8 +17,11 @@ export interface Project {
   id: string;
   name: string;
   surveyId: string;
+  directoryId?: string;
   messageId: string;
+  messageLibraryId?: string;
   messageIdEmail: string;
+  messageEmailLibraryId?: string;
   mailingListId: string;
   timezone: string;
   minutesExpire: number;
@@ -63,12 +66,16 @@ export interface MailingListInfo {
   id: string;
   name: string;
   contactCount: number | null;
+  directoryId?: string;
+  directoryName?: string;
 }
 
 export interface MessageInfo {
   id: string;
   description: string;
   category: string | null;
+  libraryId?: string;
+  libraryName?: string;
 }
 
 export interface ContactView {

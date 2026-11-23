@@ -1,11 +1,12 @@
 use serde_json::Value;
 
-use super::{client::QualtricsClient, models::MessageInfo};
+use super::{client::QualtricsClient, libraries, models::MessageInfo};
 use crate::error::{AppError, AppResult};
 
-pub async fn list_messages(
+pub async fn list_messages_in(
     client: &QualtricsClient,
     library_id: &str,
+    library_name: &str,
 ) -> AppResult<Vec<MessageInfo>> {
     let elements = client
         .get_elements(&format!("libraries/{library_id}/messages"))
@@ -24,9 +25,35 @@ pub async fn list_messages(
                     .get("category")
                     .and_then(Value::as_str)
                     .map(str::to_string),
+                library_id: library_id.to_string(),
+                library_name: library_name.to_string(),
             })
         })
         .collect())
+}
+
+pub async fn list_messages(
+    client: &QualtricsClient,
+    library_id: &str,
+) -> AppResult<Vec<MessageInfo>> {
+    list_messages_in(client, library_id, "").await
+}
+
+pub async fn list_messages_all(client: &QualtricsClient) -> AppResult<Vec<MessageInfo>> {
+    let libs = libraries::list_libraries(client).await?;
+    let mut out = Vec::new();
+    for lib in libs {
+        let lid = lib.id.trim();
+        if lid.is_empty() {
+            continue;
+        }
+        match list_messages_in(client, lid, lib.name.trim()).await {
+            Ok(items) => out.extend(items),
+            Err(AppError::Unauthorized | AppError::NotFound(_)) => continue,
+            Err(err) => return Err(err),
+        }
+    }
+    Ok(out)
 }
 
 /// Returns the English body of a library message.

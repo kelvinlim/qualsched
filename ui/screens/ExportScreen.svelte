@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as api from "@qualsched/api";
+  import { effectiveDirectory, effectiveMessageLibrary } from "../lib/container-resolve";
   import { app } from "../lib/state.svelte";
   import { errorMessage } from "../lib/types";
   import BusyMark from "../components/BusyMark.svelte";
@@ -38,25 +39,33 @@
     }
   }
 
-  let rows = $derived(
-    app.account && app.project
-      ? [
-          ["Account", app.account.name || "(unnamed account)"],
-          ["Data center", app.account.dataCenter],
-          ["Contact directory", app.account.defaultDirectory],
-          ["Message library", app.account.libraryId],
-          ["Survey profile", app.project.name || "(unnamed profile)"],
-          ["Survey", app.project.surveyId],
-          ["Mailing list", app.project.mailingListId],
-          ["SMS template", app.project.messageId],
-          ["Email template", app.project.messageIdEmail],
-          ["Time zone", app.project.timezone],
-          ["Time slots", app.project.embeddedDefaults.timeSlots],
-          ["Contact method", app.project.embeddedDefaults.contactMethod],
-          ["Email sender", app.project.emailHeader.fromEmail],
-        ]
-      : [],
-  );
+  let rows = $derived.by(() => {
+    if (!app.account || !app.project) return [];
+    const effDir = effectiveDirectory(app.account, app.project);
+    const effSmsLib = effectiveMessageLibrary(app.account, app.project, "sms");
+    const effEmailLib = effectiveMessageLibrary(app.account, app.project, "email");
+    const list: [string, string][] = [
+      ["Account", app.account.name || "(unnamed account)"],
+      ["Data center", app.account.dataCenter],
+      ["Contact directory", effDir],
+      [effEmailLib !== effSmsLib ? "SMS library" : "Message library", effSmsLib],
+    ];
+    if (effEmailLib && effEmailLib !== effSmsLib) {
+      list.push(["Email library", effEmailLib]);
+    }
+    list.push(
+      ["Survey profile", app.project.name || "(unnamed profile)"],
+      ["Survey", app.project.surveyId],
+      ["Mailing list", app.project.mailingListId],
+      ["SMS template", app.project.messageId],
+      ["Email template", app.project.messageIdEmail],
+      ["Time zone", app.project.timezone],
+      ["Time slots", app.project.embeddedDefaults.timeSlots],
+      ["Contact method", app.project.embeddedDefaults.contactMethod],
+      ["Email sender", app.project.emailHeader.fromEmail],
+    );
+    return list;
+  });
 </script>
 
 <h1>Export Config</h1>

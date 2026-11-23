@@ -83,8 +83,17 @@ class SurveyProfile(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     survey_id: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    directory_id: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="", server_default=""
+    )
     message_id: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    message_library_id: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="", server_default=""
+    )
     message_id_email: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    message_email_library_id: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="", server_default=""
+    )
     mailing_list_id: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="America/Chicago")
     minutes_expire: Mapped[int] = mapped_column(Integer, nullable=False, default=60)

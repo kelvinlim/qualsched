@@ -67,19 +67,51 @@ pub struct ConfirmImport {
 /// Adds an imported profile to an account that already exists, leaving everything else
 /// about that account alone.
 ///
+/// Preserves the imported file's directory/library onto the profile when joining an
+/// existing account whose own defaults differ.
+fn preserve_imported_containers(
+    target: &Account,
+    source_account: &Account,
+    project: &mut Project,
+) {
+    let file_dir = source_account.default_directory.trim();
+    let target_dir = target.default_directory.trim();
+    if project.directory_id.trim().is_empty()
+        && !file_dir.is_empty()
+        && !file_dir.eq_ignore_ascii_case(target_dir)
+    {
+        project.directory_id = file_dir.to_string();
+    }
+
+    let file_lib = source_account.library_id.trim();
+    let target_lib = target.library_id.trim();
+    if !file_lib.is_empty() && !file_lib.eq_ignore_ascii_case(target_lib) {
+        if project.message_library_id.trim().is_empty() {
+            project.message_library_id = file_lib.to_string();
+        }
+        if project.message_email_library_id.trim().is_empty() {
+            project.message_email_library_id = file_lib.to_string();
+        }
+    }
+}
+
 /// Mirrors `config_cmds::save_project`'s find-then-push, including the replace-on-matching-id
 /// case: a resubmitted preview carries the project id it was given at preview time, and a
 /// blind push would leave a second copy that `iter().find()` can never reach.
 fn add_project_to_account(
     cfg: &mut AppConfig,
     account_id: Uuid,
-    project: Project,
+    source_account: Option<&Account>,
+    mut project: Project,
 ) -> AppResult<()> {
     let target = cfg
         .accounts
         .iter_mut()
         .find(|a| a.id == account_id)
         .ok_or_else(|| AppError::NotFound("that account no longer exists".into()))?;
+    if let Some(source) = source_account {
+        preserve_imported_containers(target, source, &mut project);
+    }
     match target.projects.iter_mut().find(|p| p.id == project.id) {
         Some(existing) => *existing = project,
         None => target.projects.push(project),
@@ -111,7 +143,9 @@ pub async fn confirm_legacy_import(
     // which have anything to do with adding a survey profile.
     if let Some(account_id) = target_account_id {
         return state
-            .update_config(&app, |cfg| add_project_to_account(cfg, account_id, project))
+            .update_config(&app, |cfg| {
+                add_project_to_account(cfg, account_id, Some(&account), project)
+            })
             .await;
     }
 
@@ -157,6 +191,9 @@ mod tests {
             message_id: String::new(),
             message_id_email: String::new(),
             mailing_list_id: String::new(),
+            directory_id: String::new(),
+            message_library_id: String::new(),
+            message_email_library_id: String::new(),
             timezone: DEFAULT_TIMEZONE.into(),
             minutes_expire: DEFAULT_MINUTES_EXPIRE,
             email_header: EmailHeader::default(),
@@ -193,7 +230,7 @@ mod tests {
     fn adding_a_profile_leaves_the_account_alone() {
         let (mut cfg, account_id) = config_with_one_account();
 
-        add_project_to_account(&mut cfg, account_id, project("Imported")).unwrap();
+        add_project_to_account(&mut cfg, account_id, None, project("Imported")).unwrap();
 
         assert_eq!(cfg.accounts.len(), 1, "no second account");
         let account = &cfg.accounts[0];
@@ -209,7 +246,8 @@ mod tests {
     #[test]
     fn adding_to_an_unknown_account_is_not_found() {
         let (mut cfg, _) = config_with_one_account();
-        let err = add_project_to_account(&mut cfg, Uuid::new_v4(), project("Imported")).unwrap_err();
+        let err = add_project_to_account(&mut cfg, Uuid::new_v4(), None, project("Imported"))
+            .unwrap_err();
         assert!(matches!(err, AppError::NotFound(_)));
     }
 
@@ -220,9 +258,9 @@ mod tests {
         let (mut cfg, account_id) = config_with_one_account();
         let mut imported = project("Imported");
 
-        add_project_to_account(&mut cfg, account_id, imported.clone()).unwrap();
+        add_project_to_account(&mut cfg, account_id, None, imported.clone()).unwrap();
         imported.name = "Imported, renamed".into();
-        add_project_to_account(&mut cfg, account_id, imported).unwrap();
+        add_project_to_account(&mut cfg, account_id, None, imported).unwrap();
 
         assert_eq!(cfg.accounts[0].projects.len(), 2);
         assert_eq!(cfg.accounts[0].projects[1].name, "Imported, renamed");
@@ -250,5 +288,43 @@ mod tests {
         let request: ConfirmImport = serde_json::from_str(json).expect("should deserialize");
         assert!(request.target_account_id.is_none());
         assert!(request.token.is_none());
+    }
+
+    #[test]
+    fn adding_a_profile_preserves_differing_containers_from_source_account() {
+        let (mut cfg, account_id) = config_with_one_account();
+        let source = Account {
+            id: Uuid::new_v4(),
+            name: "Other".into(),
+            data_center: "gov1".into(),
+            verify_tls: false,
+            default_directory: "POOL_2".into(),
+            library_id: "GR_2".into(),
+            projects: Vec::new(),
+        };
+
+        add_project_to_account(&mut cfg, account_id, Some(&source), project("Imported")).unwrap();
+
+        let target = &cfg.accounts[0];
+        assert_eq!(target.default_directory, "POOL_1");
+        assert_eq!(target.library_id, "GR_1");
+        let added = &target.projects[1];
+        assert_eq!(added.directory_id, "POOL_2");
+        assert_eq!(added.message_library_id, "GR_2");
+        assert_eq!(added.message_email_library_id, "GR_2");
+
+        // Explicit project overrides survive, and matching containers remain inherited ("").
+        let mut explicit = project("Explicit");
+        explicit.directory_id = "POOL_explicit".into();
+        let matching_source = Account {
+            default_directory: "pool_1".into(),
+            library_id: "gr_1".into(),
+            ..source
+        };
+        add_project_to_account(&mut cfg, account_id, Some(&matching_source), explicit).unwrap();
+        let saved = &cfg.accounts[0].projects[2];
+        assert_eq!(saved.directory_id, "POOL_explicit");
+        assert_eq!(saved.message_library_id, "");
+        assert_eq!(saved.message_email_library_id, "");
     }
 }

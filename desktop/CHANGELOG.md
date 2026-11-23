@@ -2,6 +2,15 @@
 
 All notable changes to QualSched are documented in this file.
 
+## [0.2.8] - 2026-11-23
+
+### Added
+- Cross-directory and cross-library search (**All directories** / **All libraries**) and a searchable container picker on **Survey profile** for mailing lists, SMS templates, and email templates, automatically pairing the chosen item's directory or library onto the profile when it differs from the account default.
+- Per-profile container overrides (`directoryId`, `messageLibraryId`, `messageEmailLibraryId`) so a study's mailing list, SMS template, and email template can live in different Qualtrics directories or libraries.
+
+### Changed
+- Legacy YAML import into an existing account preserves differing directory/library IDs as profile overrides instead of discarding them, and YAML exports remain CLI-compatible while round-tripping per-profile container overrides.
+
 ## [0.2.7] - 2026-11-22
 
 ### Changed

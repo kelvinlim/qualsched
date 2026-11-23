@@ -87,12 +87,8 @@ pub async fn preview_schedule(
         (a.clone(), p.clone())
     };
     let client = state.client(account_id).await?;
-    let raw = contacts::list_contacts(
-        &client,
-        &account.default_directory,
-        &project.mailing_list_id,
-    )
-    .await?;
+    let directory_id = project.effective_directory(&account);
+    let raw = contacts::list_contacts(&client, directory_id, &project.mailing_list_id).await?;
 
     let now = Utc::now();
     let mut rng = StdRng::from_entropy();
@@ -223,14 +219,22 @@ pub async fn execute_schedule(
             "this project has no survey selected".into(),
         ));
     }
+    if project.effective_library(&account, Method::Sms).is_empty()
+        && project.effective_library(&account, Method::Email).is_empty()
+    {
+        return Err(AppError::Invalid(
+            "set a message library ID on the account or survey profile first".into(),
+        ));
+    }
+    let directory_id = project.effective_directory(&account);
+    if directory_id.is_empty() {
+        return Err(AppError::Invalid(
+            "set a default directory on the account or survey profile first".into(),
+        ));
+    }
     let client = state.client(account_id).await?;
 
-    let raw = contacts::list_contacts(
-        &client,
-        &account.default_directory,
-        &project.mailing_list_id,
-    )
-    .await?;
+    let raw = contacts::list_contacts(&client, directory_id, &project.mailing_list_id).await?;
     let by_id: HashMap<&str, &RawContact> = raw
         .iter()
         .filter_map(|c| c.id().map(|id| (id, c)))
@@ -241,7 +245,7 @@ pub async fn execute_schedule(
     let mut failed: Vec<ItemFailure> = Vec::new();
     let mut bookkeeping_failures: Vec<ItemFailure> = Vec::new();
     let mut lookup_cache: HashMap<String, String> = HashMap::new();
-    let mut message_cache: HashMap<String, String> = HashMap::new();
+    let mut message_cache: HashMap<(String, String), String> = HashMap::new();
     let mut sent_per_contact: HashMap<String, usize> = HashMap::new();
 
     let now = Utc::now();
@@ -297,7 +301,7 @@ pub async fn execute_schedule(
 
         let lookup_id = match resolve_lookup_id(
             &client,
-            &account.default_directory,
+            directory_id,
             &project.mailing_list_id,
             contact,
             &mut lookup_cache,
@@ -328,13 +332,17 @@ pub async fn execute_schedule(
             }
         };
 
-        let body = match resolve_message(
-            &client,
-            &account.library_id,
-            &message_id,
-            &mut message_cache,
-        )
-        .await
+        let library_id = project.effective_library(&account, item.method);
+        if library_id.is_empty() {
+            failed.push(fail(
+                "this project has no message library selected".into(),
+                false,
+            ));
+            emit(&window, done, total, &item.contact_name, false);
+            continue;
+        }
+
+        let body = match resolve_message(&client, library_id, &message_id, &mut message_cache).await
         {
             Ok(b) => b,
             Err(e) => {
@@ -393,7 +401,7 @@ pub async fn execute_schedule(
         });
         if let Err(e) = contacts::update_contact(
             &client,
-            &account.default_directory,
+            directory_id,
             &project.mailing_list_id,
             contact,
             &BTreeMap::new(),
@@ -448,13 +456,14 @@ async fn resolve_message(
     client: &QualtricsClient,
     library_id: &str,
     message_id: &str,
-    cache: &mut HashMap<String, String>,
+    cache: &mut HashMap<(String, String), String>,
 ) -> AppResult<String> {
-    if let Some(hit) = cache.get(message_id) {
+    let key = (library_id.to_string(), message_id.to_string());
+    if let Some(hit) = cache.get(&key) {
         return Ok(hit.clone());
     }
     let text = messages::get_message_text(client, library_id, message_id).await?;
-    cache.insert(message_id.to_string(), text.clone());
+    cache.insert(key, text.clone());
     Ok(text)
 }
 

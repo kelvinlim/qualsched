@@ -151,12 +151,9 @@ pub async fn load_report(
 ) -> AppResult<AcquisitionReport> {
     publish_status(on_status, "Connecting to Qualtrics");
     publish_status(on_status, "Loading contacts");
-    let raw_contacts = contacts::list_contacts(
-        client,
-        &account.default_directory,
-        &project.mailing_list_id,
-    )
-    .await?;
+    let directory_id = project.effective_directory(account);
+    let raw_contacts =
+        contacts::list_contacts(client, directory_id, &project.mailing_list_id).await?;
     let mut participants = Vec::new();
     for raw in &raw_contacts {
         let Some(contact_id) = raw.id() else {
@@ -164,7 +161,7 @@ pub async fn load_report(
         };
         let lookup = match contacts::resolve_contact_lookup_id(
             client,
-            &account.default_directory,
+            directory_id,
             &project.mailing_list_id,
             raw,
         )

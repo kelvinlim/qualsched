@@ -164,11 +164,19 @@ export const listMailingLists = (accountId: string, directoryId: string) =>
     `/api/accounts/${accountId}/mailing-lists?directoryId=${encodeURIComponent(directoryId)}`,
   );
 
-export const listMessages = (accountId: string) =>
-  request<MessageInfo[]>(`/api/accounts/${accountId}/messages`);
+export const listMessages = (accountId: string, libraryId?: string) =>
+  request<MessageInfo[]>(
+    libraryId
+      ? `/api/accounts/${accountId}/messages?libraryId=${encodeURIComponent(libraryId)}`
+      : `/api/accounts/${accountId}/messages`,
+  );
 
-export const getMessageText = (accountId: string, messageId: string) =>
-  request<string>(`/api/accounts/${accountId}/messages/${encodeURIComponent(messageId)}/text`);
+export const getMessageText = (accountId: string, messageId: string, libraryId?: string) =>
+  request<string>(
+    libraryId
+      ? `/api/accounts/${accountId}/messages/${encodeURIComponent(messageId)}/text?libraryId=${encodeURIComponent(libraryId)}`
+      : `/api/accounts/${accountId}/messages/${encodeURIComponent(messageId)}/text`,
+  );
 
 // --- contacts (live Qualtrics mailing list; never stored) ---------------
 
@@ -376,7 +384,7 @@ export const devLogin = (email: string) => json<Me>("/auth/dev-login", "POST", {
 // --- updates --------------------------------------------------------------
 
 export const checkForUpdate = async (): Promise<UpdateInfo> => {
-  const currentVersion = "0.2.7";
+  const currentVersion = "0.2.8";
   try {
     const res = await fetch(
       "https://api.github.com/repos/kelvinlim/qualsched/releases/latest",

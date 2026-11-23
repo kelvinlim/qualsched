@@ -28,6 +28,7 @@ import httpx
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.accounts import effective_directory
 from app.contacts import (
     contact_id_of,
     display_name,
@@ -1410,7 +1411,7 @@ def _new_job(
     poll_limit_survey: int,
     poll_limit_total: int,
 ) -> _ExportJob:
-    directory = account.default_directory
+    directory = effective_directory(account, profile)
     mailing_list = profile.mailing_list_id
     _stop_if_requested()
     _note("Loading contacts", "start")
@@ -1682,12 +1683,13 @@ def set_monitor_status(
     monitor = status.strip().lower()
     if monitor not in {"active", "inactive"}:
         raise app_error(400, "Invalid", "status must be active or inactive")
-    raw_list = list_raw(client, account.default_directory, profile.mailing_list_id)
+    directory = effective_directory(account, profile)
+    raw_list = list_raw(client, directory, profile.mailing_list_id)
     contact = find_in_list(raw_list, contact_id)
     before = embedded_of(contact).get("SurveysScheduled")
     updated = update_contact(
         client,
-        account.default_directory,
+        directory,
         profile.mailing_list_id,
         contact,
         {},

@@ -326,3 +326,24 @@ def test_append_log_data_promotes_and_caps():
 
 def test_write_pacing_constant_matches_desktop():
     assert WRITE_PACING_SECONDS == 0.12
+
+
+def test_contacts_use_profile_directory_override(ctx, monkeypatch):
+    http, _, _ = ctx
+    account = {**ACCOUNT, "defaultDirectory": ""}
+    project = {**PROJECT, "directoryId": "POOL_override", "mailingListId": "CG_list"}
+    assert http.post("/api/accounts", json=account).status_code == 200
+    assert http.post(f"/api/accounts/{AID}/projects", json=project).status_code == 200
+    assert http.put(f"/api/accounts/{AID}/token", json={"token": SECRET}).status_code == 200
+
+    fake = FakeQualtrics()
+    fake.add(_eligible_raw())
+    _install(monkeypatch, fake)
+
+    r = http.get(BASE)
+    assert r.status_code == 200, r.text
+    assert len(r.json()) == 1
+    assert (
+        "get_elements",
+        "directories/POOL_override/mailinglists/CG_list/contacts?includeEmbedded=true",
+    ) in fake.calls

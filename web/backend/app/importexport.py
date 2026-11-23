@@ -171,8 +171,11 @@ def parse_config(yaml_text: str, source_name: str) -> ImportPreview:
         id=str(uuid.uuid4()),
         name=project_name,
         surveyId=_str(project_section, "SURVEY_ID"),
+        directoryId=_str(project_section, "DIRECTORY_ID"),
         messageId=_str(project_section, "MESSAGE_ID"),
+        messageLibraryId=_str(project_section, "MESSAGE_LIBRARY_ID"),
         messageIdEmail=message_id_email,
+        messageEmailLibraryId=_str(project_section, "MESSAGE_EMAIL_LIBRARY_ID"),
         mailingListId=_str(project_section, "MAILING_LIST_ID"),
         timezone=timezone,
         minutesExpire=minutes_expire or DEFAULT_EXPIRE,
@@ -184,22 +187,33 @@ def parse_config(yaml_text: str, source_name: str) -> ImportPreview:
 
 def build_legacy_yaml(account: Account, project: Project) -> str:
     e = project.embeddedDefaults
+    eff_dir = (project.directoryId or "").strip() or account.defaultDirectory
+    eff_lib = (project.messageLibraryId or "").strip() or account.libraryId
+    eff_email_lib = (project.messageEmailLibraryId or "").strip()
+    proj_payload: dict[str, Any] = {
+        "NAME": project.name,
+        "SURVEY_ID": project.surveyId,
+        "MESSAGE_ID": project.messageId,
+        "MESSAGE_ID_EMAIL": project.messageIdEmail,
+        "MAILING_LIST_ID": project.mailingListId,
+        "TIMEZONE": project.timezone,
+        "MINUTES_EXPIRE": project.minutesExpire,
+    }
+    if (project.directoryId or "").strip():
+        proj_payload["DIRECTORY_ID"] = project.directoryId.strip()
+    if (project.messageLibraryId or "").strip():
+        proj_payload["MESSAGE_LIBRARY_ID"] = project.messageLibraryId.strip()
+    if eff_email_lib:
+        proj_payload["MESSAGE_EMAIL_LIBRARY_ID"] = eff_email_lib
+
     payload = {
         "account": {
             "DATA_CENTER": account.dataCenter,
-            "DEFAULT_DIRECTORY": account.defaultDirectory,
-            "LIBRARY_ID": account.libraryId,
+            "DEFAULT_DIRECTORY": eff_dir,
+            "LIBRARY_ID": eff_lib,
             "VERIFY": account.verifyTls,
         },
-        "project": {
-            "NAME": project.name,
-            "SURVEY_ID": project.surveyId,
-            "MESSAGE_ID": project.messageId,
-            "MESSAGE_ID_EMAIL": project.messageIdEmail,
-            "MAILING_LIST_ID": project.mailingListId,
-            "TIMEZONE": project.timezone,
-            "MINUTES_EXPIRE": project.minutesExpire,
-        },
+        "project": proj_payload,
         "embedded_data": {
             "StartDate": e.startDate,
             "SurveysScheduled": e.surveysScheduled,

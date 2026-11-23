@@ -14,6 +14,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from app import contacts as contacts_svc
+from app.accounts import effective_directory, effective_library
 from app.eligibility import EligibilityDefaults, contact_eligibility
 from app.errors import app_error
 from app.models import QualtricsAccount, SurveyProfile
@@ -41,11 +42,11 @@ def require_schedule_ids(
     account: QualtricsAccount, profile: SurveyProfile, *, for_execute: bool
 ) -> None:
     """Missing wiring must be a 400, not an empty plan that looks like nobody to schedule."""
-    if not account.default_directory.strip():
+    if not effective_directory(account, profile):
         raise app_error(
             400,
             "Invalid",
-            "Set the account's contact directory first. "
+            "Set a contact directory on the account or survey profile first. "
             "A plan cannot be computed without it.",
         )
     if not profile.mailing_list_id.strip():
@@ -59,8 +60,15 @@ def require_schedule_ids(
         raise app_error(400, "Invalid", "this project has no survey selected")
     if not profile.message_id.strip():
         raise app_error(400, "Invalid", "this project has no SMS message selected")
-    if for_execute and not account.library_id.strip():
-        raise app_error(400, "Invalid", "Set the account's message library ID first.")
+    if for_execute and not (
+        effective_library(account, profile, "sms")
+        or effective_library(account, profile, "email")
+    ):
+        raise app_error(
+            400,
+            "Invalid",
+            "Set a message library ID on the account or survey profile first.",
+        )
 
 
 def _defaults(profile: SurveyProfile) -> EligibilityDefaults:
@@ -97,7 +105,9 @@ def preview(
 ) -> SchedulePreview:
     now = now or utcnow()
     rng = rng or new_rng()
-    raw = contacts_svc.list_raw(client, account.default_directory, profile.mailing_list_id)
+    raw = contacts_svc.list_raw(
+        client, effective_directory(account, profile), profile.mailing_list_id
+    )
     defaults = _defaults(profile)
     survey_id = profile.survey_id.strip()
 
@@ -298,14 +308,15 @@ def execute(
     rng = rng or new_rng()
     survey_id = profile.survey_id.strip()
     project = profile_to_project(profile)
+    directory_id = effective_directory(account, profile)
 
-    raw = contacts_svc.list_raw(client, account.default_directory, profile.mailing_list_id)
+    raw = contacts_svc.list_raw(client, directory_id, profile.mailing_list_id)
     by_id = {cid: c for c in raw if (cid := contacts_svc.contact_id_of(c))}
 
     failed: list[ItemFailure] = []
     bookkeeping_failures: list[ItemFailure] = []
     lookup_cache: dict[str, str] = {}
-    message_cache: dict[str, str] = {}
+    message_cache: dict[tuple[str, str], str] = {}
     sent_per_contact: dict[str, int] = {}
 
     def fail(item: PlanItem, error: str, retryable: bool) -> None:
@@ -350,7 +361,7 @@ def execute(
             else:
                 lookup_id = contacts_svc.resolve_contact_lookup_id(
                     client,
-                    account.default_directory,
+                    directory_id,
                     profile.mailing_list_id,
                     contact,
                 )
@@ -368,12 +379,18 @@ def execute(
                 continue
             message_id = profile.message_id_email
 
+        library_id = effective_library(account, profile, item.method)
+        if not library_id:
+            fail(item, "this project has no message library selected", False)
+            continue
+
+        cache_key = (library_id, message_id)
         try:
-            if message_id in message_cache:
-                body = message_cache[message_id]
+            if cache_key in message_cache:
+                body = message_cache[cache_key]
             else:
-                body = get_message_text(client, account.library_id, message_id)
-                message_cache[message_id] = body
+                body = get_message_text(client, library_id, message_id)
+                message_cache[cache_key] = body
         except (QualtricsError, HTTPException) as exc:
             message, retryable = _exc_message(exc)
             fail(item, message, retryable)
@@ -427,7 +444,7 @@ def execute(
         try:
             contacts_svc.update_contact(
                 client,
-                account.default_directory,
+                directory_id,
                 profile.mailing_list_id,
                 contact,
                 {},
